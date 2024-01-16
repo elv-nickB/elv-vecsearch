@@ -3,15 +3,22 @@ from typing import Dict
 from elv_client_py import ElvClient
 from sentence_transformers import util as ut
 import torch
+import logging
 
 from src.classes import VectorDocument, Scorer, ScorerFactory
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Returns a scorer factory that weights each field according to the query
+# Uses weights stored in index metadata at search/weights to compute weights by term
 def get_term_weight_scoring_factory(index_qid: str, client: ElvClient) -> ScorerFactory:
     def scorer_factory(query: str) -> Scorer:
         weights = get_term_weights_from_query(query, index_qid, client)
+        logging.info(f"Using weights {weights}, query={query}")
         return get_weighted_scorer(weights)
     return scorer_factory
 
+# Returns a scorer that weights each field by the given weights
 def get_weighted_scorer(weights: Dict[str, float]) -> Scorer:
     def scorer(query_embed: torch.Tensor, doc: VectorDocument) -> float:
         field_scores = {}
@@ -25,7 +32,8 @@ def get_weighted_scorer(weights: Dict[str, float]) -> Scorer:
 
 # Args:
 #   query: text query
-#   word_weights: WordWeights type, obtained from download_word_weights or download_word_ratio_weights
+#   content_id: ID of index object to retrieve term weights from
+#   client: ElvClient instance for fabric interaction
 #
 # Returns:
 #   Dict[str, float] mapping from field to weight for the given query

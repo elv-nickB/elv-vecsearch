@@ -1,88 +1,50 @@
-from typing import Any, Dict, List, Optional
-from marshmallow import Schema, fields
+from typing import List
+from marshmallow import Schema, fields as field
+
+class Any(field.Field):
+    def _deserialize(self, value, attr, data, **kwargs):
+        return value
 
 class SearchArgs(Schema):
-    terms = fields.Str()
-    filters = fields.Str()
-    ids = fields.Method(deserialize='listify')
-    max_total = fields.Int()
-    search_fields = fields.Method(deserialize='listify')
-    auth = fields.Str()
+    terms = field.Str()
+    filters = field.Str()
+    ids = field.Method(deserialize='listify')
+    max_total = field.Int()
+    search_fields = field.Method(deserialize='listify')
+    auth = field.Str()
+    display_fields = field.Method(deserialize='listify')
+    start = field.Int()
+    limit = field.Int()
+    sort = field.Str()
+    stats = field.Str()
 
     def listify(self, item: str) -> List[str]:
         return item.split(',') 
-    """
-    Optional('terms'): str,
-    Optional('filters'): str,
-    Optional('sort'): str,
-    Optional('stats'): str,
-    Optional('start'): int,
-    Optional('limit'): int,
-    Optional('max_total'): int,
-    Optional('display_fields'): List[str],
-    Optional('search_fields'): List[str],
-    Optional('rank_fields'): bool,
-    Optional('select'): List[str],
-    Optional('remove'): List[str],
-    Optional('ids'): List[str],
-    """
-
 
 class SearchOutput(Schema):
-    pagination = fields.Dict(fields.Int(), fields.Int())
-    results = fields.List(fields.Dict(fields.Str(), fields.Str()))
-    stats = fields.Dict(fields.Str(), fields.Dict(fields.Str(), fields.Str()))
-    warnings = fields.List(fields.Str())
+    class Pagination(Schema):
+        max_total = field.Int()
+        start = field.Int()
+        limit = field.Int()
+        total = field.Int()
+    class Result(Schema):
+        fields = field.Dict(Any(), field.List(Any()))
+        hash = field.Str()
+        id = field.Str()
+        meta = field.Dict()
+        prefix = field.Str()
+        score = field.Float()
+        rank = field.Int()
+        qlib_id = field.Str()
+        type = field.Str()
+    class Stats(Schema):
+        min = Any()
+        max = Any()
+        total = field.Int()
+        unique = field.Int()
+        histogram = field.Dict(Any(), field.Int())
+    pagination = field.Nested(Pagination)
+    results = field.List(field.Nested(Result))
+    stats = field.Dict(field.Str(), field.Nested(Stats))
+    warnings = field.List(field.Str())
 
-"""
-SearchArgs = Dict[str, Any]
-SearchArgsFormat = Schema({
-    Optional('terms'): str,
-    Optional('filters'): str,
-    Optional('sort'): str,
-    Optional('stats'): str,
-    Optional('start'): int,
-    Optional('limit'): int,
-    Optional('max_total'): int,
-    Optional('display_fields'): List[str],
-    Optional('search_fields'): List[str],
-    Optional('rank_fields'): bool,
-    Optional('select'): List[str],
-    Optional('remove'): List[str],
-    Optional('ids'): List[str],
-}) 
-
-SearchOutput = Dict[str, Any]
-SearchOutputFormat = Schema({
-    'pagination': {
-        'max_total': int,
-        'start': int,
-        'limit': int,
-        'total': int,
-    },
-    'results': {
-        "fields": {
-            str, List[str]
-        },
-        "hash": str,
-        "id": str,
-        "meta": Dict[str, Any],
-        "prefix": str,
-        "score": float,
-        "qlib_id": str,
-        "type": str
-    },
-    'stats': {
-        str: {
-            'min': str,
-            'max': str,
-            'total': int,
-            'unique': int,
-            'histogram': {
-                str: int
-            }
-        },
-    },
-    'warnings': List[str],
-})
-"""

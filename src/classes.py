@@ -1,5 +1,6 @@
 from typing import Callable, Dict, List, Tuple
 import torch
+import threading
 
 # field name -> list of embeddings
 VectorDocument = Dict[str, List[torch.Tensor]]
@@ -18,3 +19,10 @@ ScorerFactory = Callable[[str, List[str]], Scorer]
 
 # function taking (text) -> embedding
 TextEmbedder = Callable[[str], torch.Tensor]
+
+class UpdateStatus():
+    def __init__(self, status: str, progress: float):
+        self.status = status
+        self.progress = progress
+        self.stop_event = threading.Event()
+        self.error = None
