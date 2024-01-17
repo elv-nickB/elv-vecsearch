@@ -38,10 +38,12 @@ def build_index(content_id: str, auth_token: str, status: UpdateStatus=None) -> 
     logging.info("Embedding documents and adding to index.")
     for idx, doc in enumerate(all_docs):
         if status is not None:
-            status.percent_complete = idx / num_docs
+            with status.lock:
+                status.progress = idx / num_docs
         if status is not None and status.stop_event.is_set():
             logging.info("Stopping indexing.")
-            status.status = "stopped"
+            with status.lock:
+                status.status = "stopped"
             return
         uid = f"{doc['hash']}{doc['prefix']}"
         for field, fvalues in doc['fields'].items():
@@ -56,7 +58,8 @@ def build_index(content_id: str, auth_token: str, status: UpdateStatus=None) -> 
     with timeit("saving index"):
         index.commit()
     if status is not None:
-        status.status = "complete"
+        with status.lock:
+            status.status = "complete"
     logging.info("Indexing complete.")
     
 def _get_field_configs(client: ElvClient, content_id: str) -> Dict[str, Dict[str, float]]:

@@ -12,5 +12,5 @@ TMP_PATH = os.path.join(DATA_PATH, 'tmp')
 INDEX_PATH = os.path.join(DATA_PATH, 'indices')
 if not os.path.exists(INDEX_PATH):
     os.makedirs(INDEX_PATH)
-# using a flat index for now
-INDEX_TYPE = faiss.IndexFlatIP
+
+INDEX_TYPE = lambda x: faiss.IndexHNSWPQ(x, 32)

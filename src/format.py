@@ -38,8 +38,8 @@ class SearchOutput(Schema):
         qlib_id = field.Str()
         type = field.Str()
     class Stats(Schema):
-        min = Any()
-        max = Any()
+        min = Any(allow_none=True)
+        max = Any(allow_none=True)
         total = field.Int()
         unique = field.Int()
         histogram = field.Dict(Any(), field.Int())

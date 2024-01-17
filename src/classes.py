@@ -25,4 +25,5 @@ class UpdateStatus():
         self.status = status
         self.progress = progress
         self.stop_event = threading.Event()
+        self.lock = threading.Lock()
         self.error = None

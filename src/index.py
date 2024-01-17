@@ -54,6 +54,8 @@ class FaissIndex(Index):
             self.id_map[field] = []
             self.indices[field] = self.index_type(self.shape)
         self.indices[field].add(embeddings)
+        for _ in embeddings:
+            self.id_map[field].append(uid)
         if uid not in self.text_data:
             self.text_data[uid] = {}
         self.text_data[uid][field] = text
@@ -62,7 +64,6 @@ class FaissIndex(Index):
         with open(os.path.join(self.path, 'vector_data', uid_to_path(uid), f'{field}.pkl'), 'wb') as f:
             torch.save(embeddings, f)
         self.text_data[uid][field] = text
-        self.id_map[field].append(uid)
 
     """
     Args:
@@ -84,6 +85,7 @@ class FaissIndex(Index):
         for field in fields:
             _, ids = self.indices[field].search(query_embed, k1)
             ids = ids.tolist()[0]
+            ids = sorted(ids)
             uids.extend(self.id_map[field][i] for i in ids)
         result = self._sort_results(query, query_embed, uids, k2)
         return result

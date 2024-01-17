@@ -32,7 +32,8 @@ def get_server():
         if qid in os.listdir(config.INDEX_PATH) and not qid in tasks:
             return True
         elif qid in tasks:
-            return tasks[qid].status == 'complete'
+            with tasks[qid].lock:
+                return tasks[qid].status == 'complete'
         
     def _check_access(qid: str, auth: str) -> bool:
         client = ElvClient.from_configuration_url(config.CONFIG_URL, auth)
@@ -44,6 +45,9 @@ def get_server():
 
     @server.route('/q/<qid>/search')
     def handle_search(qid: str) -> Response:
+        if not _check_access(qid, request.args.get('auth')):
+            return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
+
         if not _is_indexed(qid):
             return Response(response=json.dumps({'error': f'Index has not been built or is currently being updated for qid={qid}'}), status=400, mimetype='application/json')
         
@@ -62,6 +66,9 @@ def get_server():
 
     @server.route('/q/<qid>/search_update')
     def search_update(qid: str) -> Response:
+        if not _check_access(qid, request.args.get('auth')):
+            return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
+
         if qid in tasks:
             return Response(response=json.dumps({'error': 'Indexing already in progress'}), status=400, mimetype='application/json')
         args = request.args
@@ -72,11 +79,14 @@ def get_server():
 
     @server.route('/q/<qid>/update_status')
     def status(qid: str) -> Response:
+        if not _check_access(qid, request.args.get('auth')):
+            return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
         if qid in tasks:
             status = tasks[qid]
-            res = {'status': status.status, 'progress': status.progress}
-            if status.error is not None:
-                res['error'] = status.error
+            with status.lock:
+                res = {'status': status.status, 'progress': status.progress}
+                if status.error is not None:
+                    res['error'] = status.error
             return Response(response=json.dumps(res), status=200, mimetype='application/json')
         elif _is_indexed(qid):
             return Response(response=json.dumps({'status': 'complete'}), status=200, mimetype='application/json')
@@ -86,17 +96,21 @@ def get_server():
     @server.route('/q/<qid>/stop_update')
     def stop(qid: str) -> Response:
         if not _check_access(qid, request.args.get('auth')):
-            return Response(response=json.dumps({'error': 'Unauthorized qidj'}), status=401, mimetype='application/json')
+            return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
+        
         if qid not in tasks:
             return Response(response=json.dumps({'error': 'No indexing in progress'}), status=400, mimetype='application/json')
-        tasks[qid].stop_event.set()
+        with tasks[qid].lock:
+            tasks[qid].stop_event.set()
         shutil.rmtree(os.path.join(config.TMP_PATH, qid), ignore_errors=True)
-        tasks[qid].status = 'stopped'
+        with tasks[qid].lock:
+            tasks[qid].status = 'stopped'
         return Response(response=json.dumps({'status': 'stopping'}), status=200, mimetype='application/json')
 
     def cleanup():
         for qid in tasks:
-            tasks[qid].exit_signal.set()
+            with tasks[qid].lock:
+                tasks[qid].exit_signal.set()
             del tasks[qid]
         shutil.rmtree(config.TMP_PATH, ignore_errors=True)
 
