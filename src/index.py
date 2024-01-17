@@ -1,6 +1,6 @@
 import faiss
 import torch
-from typing import List, Dict, Any, Type
+from typing import List, Dict, Any, Type, Iterable
 import os
 import dill
 from sentence_transformers import SentenceTransformer
@@ -85,12 +85,13 @@ class FaissIndex(Index):
         for field in fields:
             _, ids = self.indices[field].search(query_embed, k1)
             ids = ids.tolist()[0]
-            ids = sorted(ids)
+            # filter out bad matches
+            ids = list(filter(lambda x: x >= 0, ids))
             uids.extend(self.id_map[field][i] for i in ids)
-        result = self._sort_results(query, query_embed, uids, k2)
+        result = self._sort_results(query, query_embed, set(uids), k2)
         return result
     
-    def _sort_results(self, query: str, query_embed: torch.Tensor, uids: List[str], k2: int) -> List[str]:
+    def _sort_results(self, query: str, query_embed: torch.Tensor, uids: Iterable[str], k2: int) -> List[str]:
         scorer = self.scoring(query)
         scores = []
         for uid in uids:
