@@ -9,7 +9,7 @@ class SearchArgs(Schema):
     terms = field.Str()
     filters = field.Str()
     ids = field.Method(deserialize='listify')
-    max_total = field.Int()
+    max_total = field.Int(missing=16)
     search_fields = field.Method(deserialize='listify')
     auth = field.Str()
     display_fields = field.Method(deserialize='listify')

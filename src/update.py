@@ -39,7 +39,7 @@ def build_index(content_id: str, auth_token: str, status: UpdateStatus=None) -> 
     for idx, doc in enumerate(all_docs):
         if status is not None:
             with status.lock:
-                status.progress = idx / num_docs
+                status.progress = (idx+1) / num_docs
         if status is not None and status.stop_event.is_set():
             logging.info("Stopping indexing.")
             with status.lock:

@@ -16,8 +16,15 @@ def search(index_qid: str, args: SearchArgs, auth: str) -> SearchOutput:
         raise ValueError(f"Index for {index_qid} has not been built. Please build the index with /q/<qid>/update before searching.")
     index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, index_qid))
     # result is a list of document uids
+    if args['terms'] is None:
+        raise ValueError("No search terms provided.")
+    if 'search_fields' not in args:
+        # default to all fields
+        search_fields = index.get_fields()
+    else:
+        search_fields = args['search_fields']
     with timeit("retrieving document uids from vector index"):
-        results = index.search(args['terms'], args['search_fields'], k2=args['max_total'])
+        results = index.search(args['terms'], search_fields, k2=args['max_total'])
     # for retrieving the original order of the documents
     pos_map = _get_pos_map(results)
     client = ElvClient.from_configuration_url(config.CONFIG_URL, auth)

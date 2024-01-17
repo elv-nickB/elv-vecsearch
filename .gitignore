@@ -1,0 +1,6 @@
+node_modules
+data
+build
+elv_vecsearch.egg-info
+__pycache__
+.vscode

@@ -13,4 +13,4 @@ INDEX_PATH = os.path.join(DATA_PATH, 'indices')
 if not os.path.exists(INDEX_PATH):
     os.makedirs(INDEX_PATH)
 
-INDEX_TYPE = lambda x: faiss.IndexHNSWPQ(x, 32)
+INDEX_TYPE = faiss.IndexFlatL2
