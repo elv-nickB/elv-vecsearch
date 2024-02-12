@@ -70,6 +70,9 @@ def get_server():
         ranker = SimpleRanker(index)
         searcher = Searcher(qid, client, processor, index, ranker)
 
+        if "search_fields" not in args:
+            args["search_fields"] = index.get_fields()
+
         res = searcher.search(args)
        
         return Response(response=json.dumps(res), status=200, mimetype='application/json')
