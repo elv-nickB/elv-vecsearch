@@ -9,8 +9,10 @@ SBERT_MODEL = 'all-mpnet-base-v2'
 CONFIG_URL = 'https://main.net955305.contentfabric.io/config'
 
 TMP_PATH = os.path.join(DATA_PATH, 'tmp')
+if not os.path.exists(TMP_PATH):
+    os.makedirs(TMP_PATH)
 INDEX_PATH = os.path.join(DATA_PATH, 'indices')
 if not os.path.exists(INDEX_PATH):
     os.makedirs(INDEX_PATH)
 
-INDEX_TYPE = lambda x: faiss.IndexHNSWPQ(x, 32)
+IndexConstructor = lambda: faiss.IndexFlatL2(768)
