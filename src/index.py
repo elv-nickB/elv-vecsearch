@@ -1,15 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Iterable, Type, Callable
+from typing import List, Dict, Iterable, Callable
 import numpy as np
 import os
 import dill
 import shutil
 import faiss
 
-import src.config as config
-
 # field name -> list of embeddings
-# TODO: check if this is the right type
 VectorDocument = Dict[str, List[np.ndarray]]
 
 class Index(ABC):
@@ -63,7 +60,7 @@ class Index(ABC):
 class FaissIndex(Index):
     # subclass used to store metadata about the index for easy serialization
     class Meta:
-        # call to initialize a new index
+        # call to initialize a new index 
         IndexConstructor = Callable[[], faiss.Index]
         def __init__(self, path: str, index_builder: IndexConstructor, id_map: Dict[str, List[str]]) -> None:
             self.path = path
@@ -107,7 +104,7 @@ class FaissIndex(Index):
     Side Effects:
         Adds the text to the index so that it can be searched
     """
-    def add(self, field: str, uid: str, embeddings: Iterable[np.ndarray]) -> None:
+    def add(self, field: str, uid: str, embeddings: List[np.ndarray]) -> None:
         if field not in self.id_map:
             self.id_map[field] = []
             self.indices[field] = self.get_index()

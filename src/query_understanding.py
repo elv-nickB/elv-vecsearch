@@ -1,21 +1,12 @@
 from elv_client_py import ElvClient
-from typing import Dict
+from typing import Dict, Any
 from abc import ABC, abstractmethod
-import numpy as np
+from marshmallow import Schema, fields as field
 
 from src.embedding import TextEncoder
-from src.format import SearchArgs
+from src.format import SearchArgs, Any
 
 FieldWeights = Dict[str, float]
-
-# Represents all data that should be passed to the Search block. For now, this is just a query and its weights
-class Query:
-    def __init__(self, content_id: str, args: SearchArgs, corrected_query: str, weights: FieldWeights, embedding: np.ndarray):
-        self.content_id = content_id
-        self.args = args
-        self.corrected_query = corrected_query
-        self.weights = weights
-        self.embedding = embedding
 
 # Abstract class representing Query Understanding block
 class QueryProcessor(ABC):
@@ -23,12 +14,23 @@ class QueryProcessor(ABC):
     #   content_id: id of the index object
     #   query: user query
     #  Returns:
-    #   Query object representing the query, to be passed to search block
+    #   A processed query, the type of which is defined by the subclass
     @abstractmethod
-    def process_query(self, content_id: str, query: SearchArgs) -> Query:
+    def process_query(self, content_id: str, query: SearchArgs) -> Any:
         pass
 
 class SimpleQueryProcessor(QueryProcessor):
+
+    # Schema for the processed query:
+    # NOTE: Query processors will return arbitrary dictionary-like output, so we can accomodate a variety of use cases.
+    # But they may define the schema like this, so developers can at least understand the expected output. 
+    class ProcessedQuery(Schema):
+        content_id = field.Str()
+        args = field.Nested(SearchArgs)
+        corrected_query = field.Str()
+        weights = field.Dict(field.Str(), field.Float())
+        embedding = Any(allow_none=True)
+
     # Args:
     #   client: ElvClient instance for fabric interaction
     #   content_id: ID of index object to retrieve term weights from
@@ -37,11 +39,14 @@ class SimpleQueryProcessor(QueryProcessor):
         self.client = client
         self.encoder = encoder
 
-    def process_query(self, content_id: str, query: SearchArgs) -> Query:
+    def process_query(self, content_id: str, query: SearchArgs) -> ProcessedQuery:
         corrected_query = self._correct_query(query["terms"])
         weights = self._get_weights_from_query(content_id, corrected_query)
         embedding = self.encoder(corrected_query)
-        return Query(content_id, query, corrected_query, weights, embedding)
+        res = {"content_id": content_id, "corrected_query": corrected_query, "weights": weights, "embedding": embedding}
+        res = self.ProcessedQuery().load(res)
+        res["args"] = query
+        return res
     
     # Args:
     #   content_id: ID of index object to retrieve term weights from
@@ -63,3 +68,4 @@ class SimpleQueryProcessor(QueryProcessor):
 
     def _correct_query(self, query: str) -> str:
         return query
+    

@@ -11,7 +11,7 @@ from flask_cors import CORS
 import tempfile
 import logging
 
-from src.search import Searcher 
+from src.search import SimpleSearcher 
 from src.rank import SimpleRanker
 from src.update import IndexBuilder
 from src.format import SearchArgs
@@ -20,7 +20,8 @@ from src import config
 from src.index import FaissIndex
 from src.query_understanding import SimpleQueryProcessor
 
-# TODO: ensure thread safety 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 def get_server():
     server = Flask(__name__)
     encoder = get_encoder(config.SBERT_MODEL)
@@ -68,7 +69,7 @@ def get_server():
         index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, qid))
         processor = SimpleQueryProcessor(client, encoder)
         ranker = SimpleRanker(index)
-        searcher = Searcher(qid, client, processor, index, ranker)
+        searcher = SimpleSearcher(qid, client, processor, index, ranker)
 
         if "search_fields" not in args:
             args["search_fields"] = index.get_fields()

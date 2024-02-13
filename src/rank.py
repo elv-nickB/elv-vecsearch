@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any
 import numpy as np
 from typing import List, Dict, Callable, Tuple, Iterable
 import numpy as np
@@ -6,16 +6,21 @@ from sentence_transformers import util as ut
 from abc import ABC, abstractmethod
 
 from src.index import Index, VectorDocument
-from src.query_understanding import Query
-
-class Ranker(ABC):
-    """Abstract class representing the Re-ranking block in the design. This class is meant to be subclassed by a specific ranking implementation."""
-    @abstractmethod
-    def rank(self, query: Query, uids: Iterable[str], limit: int) -> List[Tuple[str, float]]:
-        pass
+from src.query_understanding import SimpleQueryProcessor
 
 # function taking (query_embedding, VectorDocument) -> score
 Scorer = Callable[[np.ndarray, VectorDocument], float] 
+
+class Ranker(ABC):
+    """
+    Abstract class representing the Re-ranking block in the design. This class is meant to be subclassed by a specific ranking implementation. 
+    The rank method should take a list of uids and a query and return a list of uids sorted by their relevance to the query.
+
+    The query format is undefined here, the specific implementation will define the expected input (see SimpleRanker example below)
+    """
+    @abstractmethod
+    def rank(self, uids: Iterable[str], limit: int, query: Any) -> List[Tuple[str, float]]:
+        pass
 
 class SimpleRanker(Ranker):
     """
@@ -26,11 +31,11 @@ class SimpleRanker(Ranker):
     def __init__(self, index: Index):
         self.index = index
 
-    def rank(self, query: Query, uids: Iterable[str], limit: int) -> List[Tuple[str, float]]:
-        scorer = self.get_weighted_scorer(query.weights)
+    def rank(self, uids: Iterable[str], limit: int, query: SimpleQueryProcessor.ProcessedQuery) -> List[Tuple[str, float]]:
+        scorer = self.get_weighted_scorer(query["weights"])
         scores = []
         for uid in uids:
-            scores.append((scorer(query.embedding, self.index.get_embeddings(uid)), uid))
+            scores.append((scorer(query["embedding"], self.index.get_embeddings(uid)), uid))
         return [(uid, score) for score, uid in sorted(scores, reverse=True)][0:limit]
 
     # Get a scorer with weights for each field

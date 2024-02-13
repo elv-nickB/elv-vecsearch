@@ -5,7 +5,6 @@ import os
 import shutil
 import logging
 import threading
-import numpy as np
 
 import src.config as config
 from src.index import Index

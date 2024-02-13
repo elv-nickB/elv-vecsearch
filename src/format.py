@@ -17,6 +17,7 @@ class SearchArgs(Schema):
     limit = field.Int()
     sort = field.Str()
     stats = field.Str()
+    debug = field.Bool(default=False)
 
     def listify(self, item: str) -> List[str]:
         return item.split(',') 
@@ -47,4 +48,4 @@ class SearchOutput(Schema):
     results = field.List(field.Nested(Result))
     stats = field.Dict(field.Str(), field.Nested(Stats))
     warnings = field.List(field.Str())
-
+    debug = field.Dict(default={})
