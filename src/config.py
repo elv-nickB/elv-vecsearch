@@ -14,5 +14,5 @@ if not os.path.exists(TMP_PATH):
 INDEX_PATH = os.path.join(DATA_PATH, 'indices')
 if not os.path.exists(INDEX_PATH):
     os.makedirs(INDEX_PATH)
-
+    
 IndexConstructor = lambda: faiss.IndexFlatL2(768)

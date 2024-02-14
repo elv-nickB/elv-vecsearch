@@ -69,3 +69,22 @@ class SimpleSearcher(Searcher):
 
     def _uid_from_result(self, res: Dict[str, str]) -> str:
         return f"{res['hash']}{res['prefix']}"
+
+import config
+import os
+from src.index import FaissIndex
+TOK = "atxsjc2GnKLFxMfiMB1iVX2jHuymsNYNTHU9YJcmAnYgV3x53adjMsB4yEaxKD5yxGcenCgBFdEWyYp9VLfdWDQwAGnpj7b8xW4ZVs1c4EFaNHaWfEbmiRszzNuDzLZU7nt5s8JHyePifwy4yezdZkWDv65nn2CSd4VNRdovbCz7HYkbBoy3pyESoa5v2tYo42BgiDgGTQFTD38FZdEEPCroe6b6TCzFdxA3QB63BL8yiKp8kKmG88egFH9E4VrMoj3ixBNbWSck6Wk5USxZVxjDKx7o9qirhseyFhbECtYaG5EnaHna7bBfFE8RVqXhfGUYRSsp9MeFQwNiwMeAHKeySiPKsJ9YcreCE8DUwoNbhZTz8WSP6Nnp6yASiCPuQNg7A5Fnqa6GyrZ8TVBW7xdFhPWAg2vTG42GULPHypi6wmRLoJEoCVL6KoT4bqn5JJP2wMAJfvBMDy5m9eQZZFTzbLwdgrKTfHPz8rywPfSN6i5KSoR8R8LKMmcDRpwpwZq1qGajiasYonCRtYmZQbiNxDKq13BWEduUGfQagPg3btGc7R8SS"
+if __name__ == "__main__":
+    from src.embedding import get_encoder
+    encoder = get_encoder(config.SBERT_MODEL)
+    qid = "iq__2VrV79DN63oWaVeFxwnpvGQsuTMz"
+    client = ElvClient.from_configuration_url(config.CONFIG_URL, TOK)
+    index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, qid))
+    processor = SimpleQueryProcessor(client, encoder)
+    ranker = SimpleRanker(index)
+    searcher = SimpleSearcher(qid, client, processor, index, ranker)
+    #args = SearchArgs().load()
+    #print(args)
+    res = searcher.search({"terms":"crosby stills", "search_fields": ["f_speech_to_text","f_celebrity","f_logo"], "debug": True, "max_total": 10})
+    
+    print(res)

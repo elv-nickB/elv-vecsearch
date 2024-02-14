@@ -64,6 +64,10 @@ class SimpleQueryProcessor(QueryProcessor):
                 continue
             for field in wt:
                 wt[field] += term_weights[term][field]
+        # normalize weights by field
+        total = sum(wt.values())
+        for field in wt:
+            wt[field] /= total
         return wt
 
     def _correct_query(self, query: str) -> str:

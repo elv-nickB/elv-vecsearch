@@ -60,7 +60,7 @@ class Index(ABC):
 class FaissIndex(Index):
     # subclass used to store metadata about the index for easy serialization
     class Meta:
-        # call to initialize a new index 
+        # call to initialize a new faiss index 
         IndexConstructor = Callable[[], faiss.Index]
         def __init__(self, path: str, index_builder: IndexConstructor, id_map: Dict[str, List[str]]) -> None:
             self.path = path
