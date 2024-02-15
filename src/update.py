@@ -13,33 +13,33 @@ from src.utils import timeit
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# TODO: ensure thread safety for this class
 class IndexBuilder():
     class UpdateStatus():
         def __init__(self, status: str, progress: float):
             self.status = status
             self.progress = progress
             self.stop_event = threading.Event()
-            self.lock = threading.Lock()
             self.error = None
             
     def __init__(self, encoder: TextEncoder):
         self.encoder = encoder
         self.tasks = {}
+        self.lock = threading.Lock()
 
     def stop(self, qid: str) -> UpdateStatus:
-        if qid not in self.tasks:
-            return None
-        with self.tasks[qid].lock:
+        with self.lock:
+            if qid not in self.tasks:
+                return None
             self.tasks[qid].stop_event.set()
             shutil.rmtree(os.path.join(config.TMP_PATH, qid), ignore_errors=True)
             self.tasks[qid].status = 'stopped'
-        return self.tasks[qid]
+            return self.tasks[qid]
 
     def get_status(self, content_id: str) -> UpdateStatus:
-        if content_id not in self.tasks:
-            return None
-        return self.tasks[content_id]
+        with self.lock:
+            if content_id not in self.tasks:
+                return None
+            return self.tasks[content_id]
 
     """
     Args:
@@ -48,6 +48,12 @@ class IndexBuilder():
     Saves a vector index for the given content_id which can be searched.
     """
     def build(self, content_id, index: Index, client: ElvClient) -> None:
+        with self.lock:
+            if content_id in self.tasks:
+                logging.error(f"Indexing already in progress for {content_id}.")
+                return
+            update_state = self.UpdateStatus('running', 0)
+            self.tasks[content_id] = update_state
         try:
             self._build(content_id, index, client)
         except Exception as e:
@@ -55,10 +61,8 @@ class IndexBuilder():
                 self.tasks[content_id].status = 'error'
                 self.tasks[content_id].error = str(e)
         
-    def _build(self, content_id: str, index: Index, client: ElvClient) -> None:
-        # TODO: ensure thread safety
-        update_state = self.UpdateStatus('running', 0)
-        self.tasks[content_id] = update_state
+    def _build(self, content_id: str, index: Index, client: ElvClient):        
+        update_state = self.tasks[content_id]
         field_configs = self._get_field_configs(content_id, client)
         num_docs = self._get_num_docs(content_id, client)
         # Unpack the entire index with a "select all" query
@@ -83,6 +87,15 @@ class IndexBuilder():
         with update_state.lock:
             update_state.status = "complete"
         logging.info("Indexing complete.")
+        return update_state
+    
+    def cleanup(self) -> None:
+        with self.lock:
+            for qid in self.tasks:
+                self.tasks[qid].exit_signal.set()
+                del self.tasks[qid]
+            # TODO: this global path might eventually be shared so probably should parameterize it
+            shutil.rmtree(config.TMP_PATH, ignore_errors=True)
 
     def _get_field_configs(self, content_id: str, client: ElvClient) -> Dict[str, Dict[str, float]]:
         res = client.content_object_metadata(object_id=content_id, metadata_subtree='indexer/config/indexer/arguments/fields')
@@ -93,10 +106,4 @@ class IndexBuilder():
         res = client.content_object_metadata(object_id=content_id, metadata_subtree='indexer/stats/document/total')
         return int(res)
     
-    def cleanup(self) -> None:
-        for qid in self.tasks:
-            with self.tasks[qid].lock:
-                self.tasks[qid].exit_signal.set()
-            del self.tasks[qid]
-        # TODO: this global path might eventually be shared so probably should parameterize it
-        shutil.rmtree(config.TMP_PATH, ignore_errors=True)
+
