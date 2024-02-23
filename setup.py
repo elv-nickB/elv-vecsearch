@@ -15,6 +15,8 @@ setup(
                       'marshmallow==3.20.2',
                       'scikit-learn==1.3.2',
                       'dill==0.3.7',
+                      'hyperopt==0.2.7',
+                      'pandas==2.2.1',
                       'elv-client-py @ git+https://github.com/eluv-io/elv-client-py.git@nick#egg=elv-client-py',
                       ]
 )
