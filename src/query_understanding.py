@@ -2,6 +2,7 @@ from elv_client_py import ElvClient
 from typing import Dict, Any
 from abc import ABC, abstractmethod
 from marshmallow import Schema, fields as field
+import logging
 
 from src.embedding import TextEncoder
 from src.format import SearchArgs, Any
@@ -14,7 +15,7 @@ class QueryProcessor(ABC):
     #   content_id: id of the index object
     #   query: user query
     #  Returns:
-    #   A processed query, the type of which is defined by the subclass
+    #   A processed query, the type of which is defined by the subclass. Will be passed to core search block.
     @abstractmethod
     def process_query(self, content_id: str, query: SearchArgs) -> Any:
         pass
@@ -42,7 +43,7 @@ class SimpleQueryProcessor(QueryProcessor):
     def process_query(self, content_id: str, query: SearchArgs) -> ProcessedQuery:
         corrected_query = self._correct_query(query["terms"])
         weights = self._get_weights_from_query(content_id, corrected_query)
-        embedding = self.encoder(corrected_query)
+        embedding = self.encoder([corrected_query])[0]
         res = {"content_id": content_id, "corrected_query": corrected_query, "weights": weights, "embedding": embedding}
         res = self.ProcessedQuery().load(res)
         res["args"] = query
@@ -57,6 +58,11 @@ class SimpleQueryProcessor(QueryProcessor):
     def _get_weights_from_query(self, content_id: str, query: str) -> FieldWeights:
         terms = query.split(' ')
         term_weights = self.client.content_object_metadata(object_id=content_id, metadata_subtree='search/weights', select=terms)
+        # Hack if term_weights is None
+        if term_weights is None:
+            term_weights = self.client.content_object_metadata(object_id=content_id, metadata_subtree='search/weights', select=["a", "the"])
+            logging.error(f"Term weights were not found for the given query {query}. Using default weights.")
+            assert term_weights is not None
         fields = list(next(iter(term_weights.values())).keys())
         wt = {f: 0 for f in fields}
         for term in term_weights:
@@ -64,8 +70,12 @@ class SimpleQueryProcessor(QueryProcessor):
                 continue
             for field in wt:
                 wt[field] += term_weights[term][field]
+        # normalize weights by field
+        total = sum(wt.values())
+        for field in wt:
+            wt[field] /= total
         return wt
 
     def _correct_query(self, query: str) -> str:
-        return query
+        return query.lower()
     

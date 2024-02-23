@@ -28,7 +28,7 @@ class Index(ABC):
     # Returns:
     #  List of uids of documents that have embeddings close to the query
     @abstractmethod
-    def search(self, field: str, query: np.ndarray) -> List[str]:
+    def search(self, query: np.ndarray, field: str, k: int) -> List[str]:
         pass
 
     # Returns:
@@ -60,7 +60,7 @@ class Index(ABC):
 class FaissIndex(Index):
     # subclass used to store metadata about the index for easy serialization
     class Meta:
-        # call to initialize a new index 
+        # call to initialize a new faiss index 
         IndexConstructor = Callable[[], faiss.Index]
         def __init__(self, path: str, index_builder: IndexConstructor, id_map: Dict[str, List[str]]) -> None:
             self.path = path

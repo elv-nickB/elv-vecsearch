@@ -6,7 +6,7 @@ class Any(field.Field):
         return value
 
 class SearchArgs(Schema):
-    terms = field.Str()
+    terms = field.Str(default='', missing='')
     filters = field.Str()
     ids = field.Method(deserialize='listify')
     max_total = field.Int(missing=10)
@@ -17,7 +17,7 @@ class SearchArgs(Schema):
     limit = field.Int()
     sort = field.Str()
     stats = field.Str()
-    debug = field.Bool(default=False)
+    debug = field.Bool(default=False, missing=False)
 
     def listify(self, item: str) -> List[str]:
         return item.split(',') 
