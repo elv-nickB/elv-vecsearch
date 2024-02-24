@@ -25,11 +25,10 @@ class IndexBuilder():
     # Args:
     #   encoder: Used for embedding text fields
     #   preprocess: Function to preprocess documents before indexing
-    def __init__(self, encoder: TextEncoder, postprocess: Callable[[np.ndarray], np.ndarray]=lambda x: x):
+    def __init__(self, encoder: TextEncoder):
         self.encoder = encoder
         self.tasks = {}
         self.lock = threading.Lock()
-        self.postprocess = postprocess
 
     def stop(self, qid: str) -> UpdateStatus:
         with self.lock:
@@ -77,21 +76,18 @@ class IndexBuilder():
         for i, doc in enumerate(all_docs): 
             if update_state.stop_event.is_set():
                 logging.info("Stopping indexing.")
-                with update_state.lock:
-                    update_state.status = "stopped"
+                update_state.status = "stopped"
                 return
             uid = f"{doc['hash']}{doc['prefix']}"
             for field, fvalues in doc['fields'].items():
                 if not field.startswith('f_') or field_configs[field[2:]]['type'] != 'text':
                     continue
-                embeddings = self.encoder(fvalues)
-                embeddings = self.postprocess(embeddings)
+                embeddings = self.encoder(field, fvalues)
                 index.add(field, uid, embeddings)
             update_state.progress = (i+1) / len(all_docs)
         with timeit("committing index"):
             index.commit()
-        with update_state.lock:
-            update_state.status = "complete"
+        update_state.status = "complete"
         logging.info("Indexing complete.")
         return update_state
     

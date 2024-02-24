@@ -15,7 +15,7 @@ from src.search import SimpleSearcher
 from src.rank import SimpleRanker
 from src.update import IndexBuilder
 from src.format import SearchArgs
-from src.embedding import get_encoder
+from src.embedding import get_encoder_with_cache
 from src import config
 from src.index import FaissIndex
 from src.query_understanding import SimpleQueryProcessor
@@ -24,8 +24,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def get_server():
     server = Flask(__name__)
-    encoder = get_encoder(config.SBERT_MODEL)
+    encoder = get_encoder_with_cache(config.SBERT_MODEL)
     index_builder = IndexBuilder(encoder)
+    searchers = {}
 
     def _update(qid: str, auth: str) -> None:
         client = ElvClient.from_configuration_url(config.CONFIG_URL, auth)
@@ -66,13 +67,16 @@ def get_server():
             return Response(response=json.dumps({'error': str(e)}), status=400, mimetype='application/json')
         
         client = ElvClient.from_configuration_url(config.CONFIG_URL, args['auth'])
-        index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, qid))
-        processor = SimpleQueryProcessor(client, encoder)
-        ranker = SimpleRanker(index)
-        searcher = SimpleSearcher(qid, client, processor, index, ranker)
+        if qid not in searchers:
+            index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, qid))
+            processor = SimpleQueryProcessor(client, encoder)
+            ranker = SimpleRanker(index)
+            searcher = SimpleSearcher(qid, client, processor, index, ranker)
+            searchers[qid] = searcher
+        searcher = searchers[qid]
 
         if "search_fields" not in args:
-            args["search_fields"] = index.get_fields()
+            args["search_fields"] = searcher.index.get_fields()
 
         res = searcher.search(args)
        

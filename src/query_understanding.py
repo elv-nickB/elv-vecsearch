@@ -43,7 +43,7 @@ class SimpleQueryProcessor(QueryProcessor):
     def process_query(self, content_id: str, query: SearchArgs) -> ProcessedQuery:
         corrected_query = self._correct_query(query["terms"])
         weights = self._get_weights_from_query(content_id, corrected_query)
-        embedding = self.encoder([corrected_query])[0]
+        embedding = self.encoder("query", [corrected_query])[0]
         res = {"content_id": content_id, "corrected_query": corrected_query, "weights": weights, "embedding": embedding}
         res = self.ProcessedQuery().load(res)
         res["args"] = query
