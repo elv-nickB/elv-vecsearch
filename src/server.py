@@ -90,7 +90,7 @@ def get_server():
             return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
 
         status = index_builder.get_status(qid)
-        if status is not None:
+        if status is not None and status.status == 'running':
             return Response(response=json.dumps({'error': f'Indexing already in progress, qid={qid}, status={status.status}, progress={status.progress}'}), status=400, mimetype='application/json')
         
         threading.Thread(target=_update, args=(qid, auth)).start()

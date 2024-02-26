@@ -73,28 +73,26 @@ class IndexBuilder():
         with timeit("unpacking index"):
             all_docs = client.search(object_id=content_id, query={"filters": "has_field:id", "max_total": num_docs, "limit": num_docs, "display_fields": ["all"]})['results']
         logging.info("Embedding documents and adding to index.")
-        for i, doc in enumerate(all_docs): 
+        for i, doc in enumerate(all_docs):
             if update_state.stop_event.is_set():
                 logging.info("Stopping indexing.")
                 update_state.status = "stopped"
                 return
             uid = f"{doc['hash']}{doc['prefix']}"
-            for field, fvalues in doc['fields'].items():
-                if not field.startswith('f_') or field_configs[field[2:]]['type'] != 'text':
-                    continue
-                embeddings = self.encoder(field, fvalues)
-                index.add(field, uid, embeddings)
+            field_embeddings = {fname: text for fname, text in doc['fields'].items() if fname[2:] in field_configs and field_configs[fname[2:]]['type'] == 'text'}
+            embeddings = self.encoder(field_embeddings)
+            for field, values in embeddings.items():
+                index.add(field, uid, values)
             update_state.progress = (i+1) / len(all_docs)
         with timeit("committing index"):
             index.commit()
         update_state.status = "complete"
         logging.info("Indexing complete.")
-        return update_state
     
     def cleanup(self) -> None:
         with self.lock:
             for qid in self.tasks:
-                self.tasks[qid].exit_signal.set()
+                self.tasks[qid].stop_event.set()
                 del self.tasks[qid]
             # TODO: this global path might eventually be shared so probably should parameterize it
             shutil.rmtree(config.TMP_PATH, ignore_errors=True)

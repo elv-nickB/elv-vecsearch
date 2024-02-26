@@ -9,7 +9,6 @@ import argparse
 from sklearn.cluster import KMeans
 import pandas as pd
 
-
 from src.index import FaissIndex
 from src.embedding import get_encoder_with_cache
 from src.embedding import TextEncoder
@@ -51,7 +50,7 @@ def get_evaluation(qid: str, auth: str, encoder: TextEncoder, data: pd.DataFrame
     # initialize an elv-client where calls to the search api are cached for future use. This is helpful for building the index, 
     # where we need to make a single large request to the search api to get all the documents
     client = LRUSearchCache(ElvClient.from_configuration_url(config.CONFIG_URL, auth))
-    processor = SimpleQueryProcessor(client, encoder)
+    
     def run_experiment(params) -> float:
         T = params["T"]
         K = int(params["K"])
@@ -59,20 +58,9 @@ def get_evaluation(qid: str, auth: str, encoder: TextEncoder, data: pd.DataFrame
         index = FaissIndex(tmp_path, config.IndexConstructor)
         # takes in 2d numpy array and removes rows with similarity greater than T with another row
         # also uses k means to reduce the number of rows to K centroids
-        def postprocess(x: np.ndarray) -> np.ndarray:
-            to_remove = []
-            for i in range(x.shape[0]):
-                for j in range(i+1, x.shape[0]):
-                    if np.dot(x[i], x[j]) > T:
-                        to_remove.append(j)
-            x = np.delete(x, to_remove, axis=0)
-            if x.shape[0] > K:
-                kmeans = KMeans(n_clusters=K, n_init=10)
-                kmeans.fit(x)
-                x = kmeans.cluster_centers_
-            return x
-    
-        index_buider = update.IndexBuilder(encoder, postprocess)
+        encoder = get_encoder_with_cache(config.SBERT_MODEL, K, T)
+        processor = SimpleQueryProcessor(client, encoder)
+        index_buider = update.IndexBuilder(encoder)
         index_buider.build(qid, index, client)
         index.set_path(os.path.join(path, qid, f"{T}_{K}"))
         ranker = SimpleRanker(index)
