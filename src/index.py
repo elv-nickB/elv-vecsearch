@@ -15,11 +15,11 @@ class Index(ABC):
     # Args:
     #  uid: unique identifier for the document
     #  field: field to add the embeddings to
-    #  embeddings: embeddings to add to the index
+    #  embeddings: embeddings to add to the index (2D np.ndarray, each row is an embedding to add to the index)
     # Side Effects:
     #  After committing, Searching for an embedding in the index under the the given field can return the given uid.
     @abstractmethod
-    def add(self, uid: str, field: str, embeddings: Iterable[np.ndarray]) -> None:
+    def add(self, uid: str, field: str, embeddings: np.ndarray) -> None:
         pass
 
     # Args:
@@ -104,7 +104,7 @@ class FaissIndex(Index):
     Side Effects:
         Adds the text to the index so that it can be searched
     """
-    def add(self, field: str, uid: str, embeddings: List[np.ndarray]) -> None:
+    def add(self, field: str, uid: str, embeddings: np.ndarray) -> None:
         if field not in self.id_map:
             self.id_map[field] = []
             self.indices[field] = self.get_index()
