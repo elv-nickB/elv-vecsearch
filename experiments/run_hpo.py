@@ -11,9 +11,10 @@ import pandas as pd
 from loguru import logger
 from collections import defaultdict
 
+import shutil
 
 from src.index import FaissIndex
-from src.embedding import get_encoder_with_cache
+from src.embedding import VideoTagEncoder
 from src.embedding import TextEncoder
 from src.search import SimpleSearcher
 from src.rank import SimpleRanker
@@ -85,17 +86,10 @@ def convert(uids: List[str], client: ElvClient, content_id: str) -> List[str]:
             if (doc["fields"]["f_start_time"][0], doc["fields"]["f_end_time"][0]) in start_end_times]
     return uids
 
-# Returns a function which evaluates a given set of parameters. We want to optimize this function.
-
-
-def get_evaluation(qid: str, auth: str, encoder: TextEncoder, data: pd.DataFrame) -> Callable[[dict], float]:
-    path = os.path.join(config.DATA_PATH, "experiments")
-    # initialize an elv-client where calls to the search api are cached for future use. This is helpful for building the index,
+def optimize_git_clean():
+    # initialize an elv-client where calls to the search api are cached for future use. This is helpful for building the index, 
     # where we need to make a single large request to the search api to get all the documents
-    client = LRUSearchCache(
-        ElvClient.from_configuration_url(config.CONFIG_URL, auth))
-    processor = SimpleQueryProcessor(client, encoder)
-
+    client = LRUSearchCache(ElvClient.from_configuration_url(config.CONFIG_URL, args.auth))
     def run_experiment(params) -> float:
         T = params["T"]
         K = int(params["K"])
@@ -103,23 +97,57 @@ def get_evaluation(qid: str, auth: str, encoder: TextEncoder, data: pd.DataFrame
         index = FaissIndex(tmp_path, config.IndexConstructor)
         # takes in 2d numpy array and removes rows with similarity greater than T with another row
         # also uses k means to reduce the number of rows to K centroids
+        encoder = VideoTagEncoder(config.SBERT_MODEL, K, T)
+        processor = SimpleQueryProcessor(client, encoder)
+        index_builder = update.IndexBuilder(encoder)
+        index_builder.build(args.qid, index, client)
+        ranker = SimpleRanker(index)
+        searcher = SimpleSearcher(index_qid=args.qid, client=client, processor=processor, index=index, ranker=ranker)
+        total = 0
+        queries = data["query"].unique()
+        for q in queries:
+            uids = data[data["query"] == q]["iqShot"].to_list()
+            uids = convert(uids, client, args.qid)
+            args = {
+                "search_fields": "f_object,f_speech_to_text,f_logo,f_celebrity,f_segment,f_display_title",
+                "max_total": len(uids), 
+                "limit": len(uids),
+                "filters": ' '.join(f"uid:\"{uid}\"" for uid in uids), 
+                "terms": q
+            }
+            args = SearchArgs().load(args)
+            res = searcher.search(args)
+            total += get_score(res, data)
 
-        def postprocess(x: np.ndarray) -> np.ndarray:
-            to_remove = []
-            for i in range(x.shape[0]):
-                for j in range(i+1, x.shape[0]):
-                    if np.dot(x[i], x[j]) > T:
-                        to_remove.append(j)
-            x = np.delete(x, to_remove, axis=0)
-            if x.shape[0] > K:
-                kmeans = KMeans(n_clusters=K, n_init=10)
-                kmeans.fit(x)
-                x = kmeans.cluster_centers_
-            return x
+        shutil.rmtree(tmp_path)
 
-        index_buider = update.IndexBuilder(encoder, postprocess)
-        index_buider.build(qid, index, client)
-        index.set_path(os.path.join(path, qid, f"{T}_{K}"))
+        return total / len(queries)
+    space = {
+        "T": hp.uniform('x', 0.6, 1.0),
+        "K": hp.quniform('y', 1, 5, 1)
+    }
+    # we need to cache the encoder results so that building the index over and over doesn't take too long
+
+    data = pd.read_csv(args.data)
+    
+    best = fmin(fn=run_experiment, space=space, algo=tpe.suggest, max_evals=args.samples)
+    print(best)
+
+def optimize_global_git():
+    # initialize an elv-client where calls to the search api are cached for future use. This is helpful for building the index, 
+    # where we need to make a single large request to the search api to get all the documents
+    client = LRUSearchCache(ElvClient.from_configuration_url(config.CONFIG_URL, args.auth))
+    encoder = VideoTagEncoder(config.SBERT_MODEL)
+    qid = args.qid
+    def run_experiment(params) -> float:
+        K = int(params["K"])
+        tmp_path = tempfile.mkdtemp(dir=config.TMP_PATH)
+        index = FaissIndex(tmp_path, config.IndexConstructor)
+        # takes in 2d numpy array and removes rows with similarity greater than T with another row
+        # also uses k means to reduce the number of rows to K centroids
+        processor = SimpleQueryProcessor(client, encoder)
+        index_builder = update.GlobalGitBuilder(encoder, K)
+        index_builder.build(qid, index, client)
         ranker = SimpleRanker(index)
         searcher = SimpleSearcher(
             index_qid=qid, client=client, processor=processor, index=index, ranker=ranker)
@@ -139,22 +167,17 @@ def get_evaluation(qid: str, auth: str, encoder: TextEncoder, data: pd.DataFrame
             res = searcher.search(args)
             total += get_loss(res, data, q)
 
+        shutil.rmtree(tmp_path)
+
+        shutil.rmtree(tmp_path)
+
         return total / len(queries)
-    return run_experiment
-
-
-def main():
     space = {
-        "T": hp.uniform('x', 0, 0.5),
-        "K": hp.quniform('y', 1, 5, 1)
+        "K": hp.quniform('y', 100, 500, 20)
     }
-    # we need to cache the encoder results so that building the index over and over doesn't take too long
-    encoder = get_encoder_with_cache(config.SBERT_MODEL)
     data = pd.read_csv(args.data)
-    evaluator = get_evaluation(args.qid, args.auth, encoder, data)
 
-    best = fmin(fn=evaluator, space=space,
-                algo=tpe.suggest, max_evals=args.samples)
+    best = fmin(fn=run_experiment, space=space, algo=tpe.suggest, max_evals=args.samples)
     print(best)
 
 
@@ -168,4 +191,4 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data", type=str, help="Path to csv file containing queries and their scores for evaluating the model", required=True)
     args = parser.parse_args()
-    main()
+    optimize_global_git()
