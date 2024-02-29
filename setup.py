@@ -19,6 +19,7 @@ setup(
         'dill==0.3.7',
         'hyperopt==0.2.7',
         'pandas==2.2.1',
+        'loguru==0.7.2',
         'elv-client-py @ git+https://github.com/eluv-io/elv-client-py.git@nick#egg=elv-client-py',
         ]
 )
