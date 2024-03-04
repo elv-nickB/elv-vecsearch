@@ -28,23 +28,30 @@ class IndexBuilder():
     #   preprocess: Function to preprocess documents before indexing
     def __init__(self, encoder: TextEncoder):
         self.encoder = encoder
-        self.tasks = {}
+        self.running_tasks = {}
+        self.ended_tasks = {}
         self.lock = threading.Lock()
 
-    def stop(self, qid: str) -> UpdateStatus:
+    def stop(self, qid: str, status: str="stopped") -> UpdateStatus:
         with self.lock:
-            if qid not in self.tasks:
+            if qid not in self.running_tasks:
                 return None
-            self.tasks[qid].stop_event.set()
+            task = self.running_tasks[qid]
+            task.stop_event.set()
             shutil.rmtree(os.path.join(config.TMP_PATH, qid), ignore_errors=True)
-            self.tasks[qid].status = 'stopped'
-            return self.tasks[qid]
+            task.status = 'stopped'
+            self.ended_tasks[qid] = task
+            del self.running_tasks[qid]
+            return task
 
     def get_status(self, content_id: str) -> UpdateStatus:
         with self.lock:
-            if content_id not in self.tasks:
+            if content_id in self.running_tasks:
+                return self.running_tasks[content_id]
+            elif content_id in self.ended_tasks:
+                return self.ended_tasks[content_id]
+            else:
                 return None
-            return self.tasks[content_id]
 
     """
     Args:
@@ -54,20 +61,24 @@ class IndexBuilder():
     """
     def build(self, content_id: str, index: Index, client: ElvClient) -> None:
         with self.lock:
-            if content_id in self.tasks:
+            if content_id in self.running_tasks:
                 logging.error(f"Indexing already in progress for {content_id}.")
                 return
             update_state = self.UpdateStatus('running', 0)
-            self.tasks[content_id] = update_state
+            self.running_tasks[content_id] = update_state
         try:
             self._build(content_id, index, client)
+            self.stop(content_id, status="finished")
         except Exception as e:
             with self.lock:
-                self.tasks[content_id].status = 'error'
-                self.tasks[content_id].error = str(e)
+                task = self.running_tasks[content_id]
+                task.status = 'error'
+                task.error = str(e.with_traceback(None))
+                self.ended_tasks[content_id] = task
+                del self.running_tasks[content_id]
         
     def _build(self, content_id: str, index: Index, client: ElvClient):
-        update_state = self.tasks[content_id]
+        update_state = self.running_tasks[content_id]
         field_configs = self._get_field_configs(content_id, client)
         num_docs = self._get_num_docs(content_id, client)
         # Unpack the entire index with a "select all" query
@@ -92,9 +103,9 @@ class IndexBuilder():
     
     def cleanup(self) -> None:
         with self.lock:
-            for qid in self.tasks:
-                self.tasks[qid].stop_event.set()
-                del self.tasks[qid]
+            for qid in self.running_tasks:
+                self.running_tasks[qid].stop_event.set()
+                del self.running_tasks[qid]
             # TODO: this global path might eventually be shared so probably should parameterize it
             shutil.rmtree(config.TMP_PATH, ignore_errors=True)
 
@@ -113,7 +124,7 @@ class GlobalGitBuilder(IndexBuilder):
         self.K = K
 
     def _build(self, content_id: str, index: Index, client: ElvClient):
-        update_state = self.tasks[content_id]
+        update_state = self.running_tasks[content_id]
         field_configs = self._get_field_configs(content_id, client)
         num_docs = self._get_num_docs(content_id, client)
         # Unpack the entire index with a "select all" query
@@ -121,7 +132,6 @@ class GlobalGitBuilder(IndexBuilder):
             all_docs = client.search(object_id=content_id, query={"filters": "has_field:id", "max_total": num_docs, "limit": num_docs, "display_fields": ["all"]})['results']
         logging.info("Embedding documents and adding to index.")
         object_embeddings = []
-        all_docs = np.random.choice(all_docs, 1000)
         for i, doc in enumerate(all_docs):
             if update_state.stop_event.is_set():
                 logging.info("Stopping indexing.")

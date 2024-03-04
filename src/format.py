@@ -18,6 +18,7 @@ class SearchArgs(Schema):
     sort = field.Str()
     stats = field.Str()
     debug = field.Bool(default=False, missing=False)
+    uids = field.Method(deserialize='listify', missing=[], default=[])
 
     def listify(self, item: str) -> List[str]:
         return item.split(',') 

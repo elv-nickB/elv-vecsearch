@@ -5,6 +5,7 @@ import os
 import dill
 import shutil
 import faiss
+import logging
 
 # field name -> list of embeddings
 VectorDocument = Dict[str, List[np.ndarray]]
@@ -125,7 +126,9 @@ class FaissIndex(Index):
         List of the top k uids
     """
     def search(self, query: np.ndarray, field: str, k: int=500) -> List[str]:
-        assert field in self.indices, f"Index is missing some of the requested field: searching={field}, available={self.get_fields()}"
+        if field not in self.indices:
+            logging.error(f"Index is missing some of the requested field: searching={field}, available={self.get_fields()}")
+            return []
         ids = self.indices[field].search(np.expand_dims(query, 0), k)[1]
         ids = ids.squeeze(0)
         uids = [self.id_map[field][i] for i in filter(lambda x: x >= 0, ids)]

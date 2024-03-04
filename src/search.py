@@ -31,10 +31,15 @@ class SimpleSearcher(Searcher):
     def search(self, args: SearchArgs) -> SearchOutput:
         with timeit("Embedding query and processing it"):
             query = self.processor.process_query(self.index_qid, args)
-        with timeit("Retrieving document uids from vector index"):
-            uids_per_field = [self.index.search(query["embedding"], field, k=args['max_total']) for field in args['search_fields']]
-            # concatenate the results from different fields and deduplicate
-            uids = set(reduce(lambda x, y: x+y, uids_per_field))
+        if args["uids"]:
+            # then we are skipping the retrieval step and just ranking the provided uids
+            uids = args["uids"]
+        else:
+            # retrieve the uids from the index
+            with timeit("Retrieving document uids from vector index"):
+                uids_per_field = [self.index.search(query["embedding"], field, k=args['max_total']) for field in args['search_fields']]
+                # concatenate the results from different fields and deduplicate
+                uids = set(reduce(lambda x, y: x+y, uids_per_field))
         ranked_uids = self.ranker.rank(uids, args['max_total'], query)
         # for retrieving the original order of the results after they are shuffled in the next step
         pos_map = self._get_pos_map(ranked_uids)

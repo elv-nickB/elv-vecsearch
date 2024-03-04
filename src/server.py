@@ -13,9 +13,9 @@ import logging
 
 from src.search import SimpleSearcher 
 from src.rank import SimpleRanker
-from src.update import IndexBuilder
+from src.update import IndexBuilder, GlobalGitBuilder
 from src.format import SearchArgs
-from src.embedding import get_encoder_with_cache
+from src.embedding import VideoTagEncoder
 from src import config
 from src.index import FaissIndex
 from src.query_understanding import SimpleQueryProcessor
@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def get_server():
     server = Flask(__name__)
-    encoder = get_encoder_with_cache(config.SBERT_MODEL)
+    encoder = VideoTagEncoder(config.SBERT_MODEL)
     index_builder = IndexBuilder(encoder)
     searchers = {}
 
@@ -90,7 +90,7 @@ def get_server():
             return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
 
         status = index_builder.get_status(qid)
-        if status is not None and status.status == 'running':
+        if status and status.status == 'running':
             return Response(response=json.dumps({'error': f'Indexing already in progress, qid={qid}, status={status.status}, progress={status.progress}'}), status=400, mimetype='application/json')
         
         threading.Thread(target=_update, args=(qid, auth)).start()
@@ -101,12 +101,10 @@ def get_server():
         if not _check_access(qid, request.args.get('auth')):
             return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
         status = index_builder.get_status(qid)
-        if status is not None:
+        if status:
             return Response(response=json.dumps({'status': status.status, 'progress': status.progress, 'error': status.error}), status=200, mimetype='application/json')
-        elif _is_indexed(qid):
-            return Response(response=json.dumps({'status': 'complete', 'progress': 1.0, 'error': None}), status=200, mimetype='application/json')
         else:
-            return Response(response=json.dumps({'error': 'No index build has not been initiated for qid={qid}'}), status=400, mimetype='application/json')
+            return Response(response=json.dumps({'error': 'No index build has been initiated for qid={qid}'}), status=400, mimetype='application/json')
     
     @server.route('/q/<qid>/stop_update')
     def handle_stop(qid: str) -> Response:
@@ -114,7 +112,7 @@ def get_server():
             return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
         status = index_builder.stop(qid)
         if status is None:
-            return Response(response=json.dumps({'error': f'No index build has not been initiated for qid={qid}'}), status=400, mimetype='application/json')
+            return Response(response=json.dumps({'error': f'No index build has been initiated for qid={qid}'}), status=400, mimetype='application/json')
         return Response(response=json.dumps({'status': status.status, 'progress': status.progress, 'error': status.error}), status=200, mimetype='application/json')
 
     # register cleanup on exit
