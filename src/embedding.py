@@ -25,9 +25,11 @@ class SimpleEncoder(TextEncoder):
 # Performs git cleanup and also merges categorical tracks into a single embedding
 class VideoTagEncoder(TextEncoder):
     categorical_tracks = ["f_celebrity", "f_action", "f_segment", "f_logo", "f_landmark"]
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, K: int=None, T: float=None):
         self.model = SentenceTransformer(model_name)
         self.cache = {}
+        self.K = K
+        self.T = T
 
     # Args:
     #   embeddings: Dict of embeddings with keys as the field names and list of text values as values
@@ -36,7 +38,7 @@ class VideoTagEncoder(TextEncoder):
     # Note: K and T are optional, omitting them will keep all embeddings
     # Returns:
     #   Dict of embeddings with keys as the field names and values as the embeddings
-    def encode(self, embeddings: Dict[str, List[str]], K: int=None, T: float=None) -> Dict[str, np.ndarray]:
+    def encode(self, embeddings: Dict[str, List[str]]) -> Dict[str, np.ndarray]:
         res = {}
         for fname, text in embeddings.items():    
             if fname in VideoTagEncoder.categorical_tracks:
@@ -46,7 +48,7 @@ class VideoTagEncoder(TextEncoder):
                     self.cache[t] = self.model.encode(t, show_progress_bar=False).squeeze()
             e = np.array([self.cache[t] for t in text])
             if fname == "f_object":
-                e = _tag_clean(e, K, T)
+                e = _tag_clean(e, self.K, self.T)
             res[fname] = e
         return res    
     

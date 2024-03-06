@@ -4,6 +4,7 @@ import pandas as pd
 from elv_client_py import ElvClient
 from sklearn.metrics import ndcg_score
 import logging
+from collections import defaultdict
 
 from src.format import SearchOutput
 import src.loss as LossFunc
@@ -15,7 +16,7 @@ def get_loss(res: SearchOutput, data: pd.DataFrame, query, k=20, reRank=False, u
     ranking, simiScore, rating = [], [], []
     newTopM = defaultdict(list)
     if 'results' not in res:
-        logger.info('Cannot pass search results')
+        logging.info('Cannot pass search results')
         return None
     for rs in res['results']:
         if len(ranking) >= k:
@@ -26,7 +27,7 @@ def get_loss(res: SearchOutput, data: pd.DataFrame, query, k=20, reRank=False, u
             _rank = rs['rank']
             _score = rs['score']
         except KeyError as e:
-            logger.info('search results missing key', e)
+            logging.info('search results missing key', e)
         else:
             if _iqShot in iqShot2rating:
                 ranking.append(_rank)
@@ -43,7 +44,6 @@ def get_loss(res: SearchOutput, data: pd.DataFrame, query, k=20, reRank=False, u
     pred_rank = np.array(ranking)
     return LossFunc.pointwise_regression_error(y_true, pred_score, pred_rank, topk=k, reRank=reRank, useRank=useRank)
 
-# TODO: implement
 def get_score(res: SearchOutput, data: pd.DataFrame, query: str) -> float:
     examples = data[data["query"] == query]
     true_scores, predicted_scores = [], []

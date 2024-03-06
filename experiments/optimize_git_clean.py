@@ -35,7 +35,7 @@ def main():
     index_builder = update.IndexBuilder(encoder)
     qid = args.qid
     data = pd.read_csv(args.data)
-    experiment = Experiment(index, index_builder, qid, client, processor, ranker, data, lambda params: encoder.set_t_k(params["T"], params["K"]))
+    experiment = Experiment(index, index_builder, qid, client, processor, ranker, data, lambda params: encoder.set_t_k(params["T"], int(params["K"])))
     
     space = {
         "T": hp.uniform('x', 0.6, 1.0),
@@ -45,17 +45,10 @@ def main():
     run_experiment = get_experiment_runner(experiment)
     
     trials = Trials()
-    best = fmin(fn=run_experiment, space=space, algo=tpe.suggest, max_evals=args.samples, trials=trials)
-    print('trials:\n')
-    # Accessing and recording the results
-    for trial in trials.trials:
-        print(trial)
-
-    # Optionally, you can also get a summary of results
-    results = sorted([{'x': x['result']['loss'], 'loss': x['misc']['vals']['x'][0]} for x in trials.trials], key=lambda y: y['x'])
-    print('results:\n')
-    print(results)
-    print('\nbest config', best)
+    fmin(fn=run_experiment, space=space, algo=tpe.suggest, max_evals=args.samples, trials=trials)
+    # Accessing the results
+    for trial in trials.trials:Ac
+        print(trial['result'], trial['misc']['vals'])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

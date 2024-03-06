@@ -39,7 +39,7 @@ class IndexBuilder():
             task = self.running_tasks[qid]
             task.stop_event.set()
             shutil.rmtree(os.path.join(config.TMP_PATH, qid), ignore_errors=True)
-            task.status = 'stopped'
+            task.status = status
             self.ended_tasks[qid] = task
             del self.running_tasks[qid]
             return task

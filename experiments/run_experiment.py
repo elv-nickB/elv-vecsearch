@@ -52,7 +52,8 @@ def get_experiment_runner(exp: Experiment):
             }
             args = SearchArgs().load(args)
             res = searcher.search(args)
-            total += get_score(res, data, q)
+            # negate the score because we want to minimize the loss
+            total += -get_score(res, data, q)
 
         shutil.rmtree(tmp_path)
 

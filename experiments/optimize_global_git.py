@@ -1,7 +1,7 @@
 from src import update, config
 from elv_client_py import ElvClient
 import tempfile
-from hyperopt import fmin, tpe, hp
+from hyperopt import fmin, tpe, hp,  Trials
 import argparse
 import pandas as pd
 import shutil
@@ -41,14 +41,16 @@ def main():
     experiment = Experiment(index, index_builder, qid, client, processor, ranker, data, lambda params: index_builder.set_k(int(params["K"])))
     
     space = {
-        "T": hp.uniform('x', 0.6, 1.0),
-        "K": hp.quniform('y', 1, 5, 1)
+        "K": hp.quniform('y', 100, 10000, 20)
     }
 
     run_experiment = get_experiment_runner(experiment)
     
-    best = fmin(fn=run_experiment, space=space, algo=tpe.suggest, max_evals=args.samples)
-    print(best)
+    trials = Trials()
+    fmin(fn=run_experiment, space=space, algo=tpe.suggest, max_evals=args.samples)
+    # Accessing the results
+    for trial in trials.trials:
+        print(trial['result'], trial['misc']['vals'])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
