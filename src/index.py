@@ -5,6 +5,7 @@ import os
 import dill
 import shutil
 import faiss
+import logging
 
 # field name -> list of embeddings
 VectorDocument = Dict[str, List[np.ndarray]]
@@ -15,11 +16,11 @@ class Index(ABC):
     # Args:
     #  uid: unique identifier for the document
     #  field: field to add the embeddings to
-    #  embeddings: embeddings to add to the index
+    #  embeddings: embeddings to add to the index (2D np.ndarray, each row is an embedding to add to the index)
     # Side Effects:
     #  After committing, Searching for an embedding in the index under the the given field can return the given uid.
     @abstractmethod
-    def add(self, uid: str, field: str, embeddings: Iterable[np.ndarray]) -> None:
+    def add(self, uid: str, field: str, embeddings: np.ndarray) -> None:
         pass
 
     # Args:
@@ -104,7 +105,7 @@ class FaissIndex(Index):
     Side Effects:
         Adds the text to the index so that it can be searched
     """
-    def add(self, field: str, uid: str, embeddings: List[np.ndarray]) -> None:
+    def add(self, field: str, uid: str, embeddings: np.ndarray) -> None:
         if field not in self.id_map:
             self.id_map[field] = []
             self.indices[field] = self.get_index()
@@ -125,7 +126,9 @@ class FaissIndex(Index):
         List of the top k uids
     """
     def search(self, query: np.ndarray, field: str, k: int=500) -> List[str]:
-        assert field in self.indices, f"Index is missing some of the requested field: searching={field}, available={self.get_fields()}"
+        if field not in self.indices:
+            logging.error(f"Index is missing some of the requested field: searching={field}, available={self.get_fields()}")
+            return []
         ids = self.indices[field].search(np.expand_dims(query, 0), k)[1]
         ids = ids.squeeze(0)
         uids = [self.id_map[field][i] for i in filter(lambda x: x >= 0, ids)]

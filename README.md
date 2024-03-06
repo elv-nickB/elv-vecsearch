@@ -1,21 +1,26 @@
 Eluvio vector search API
 
+### Setup
+
+conda env create -f env.yml
+conda activate vecsearch
+
 ### Example
 
-##### Build Index 
+##### Build Index
 
-Vector search indices are based off of on fabric indices. 
+Vector search indices are based off of on fabric indices.
 
 1. Make sure index exists on fabric. (QID)
 2. Obtain a token for this index (AUTH)
-    e.g. `elv content token create <QID>`
+   e.g. `elv content token create <QID>`
 3. Call update endpoint `curl "<HOST>/q/<QID>/search_update?auth=<AUTH>"`
 4. Check status `curl "<HOST>/q/<QID>/update_status?auth=<AUTH>"`
 5. (Stop if needed) `curl "<HOST>/q/<QID>/stop_update?auth=<AUTH>"`
 
-##### Search 
+##### Search
 
-The API is nearly identical to the on-fabric search api. Consult https://hub.doc.eluv.io/content/rep/search_api/ for more information. 
+The API is nearly identical to the on-fabric search api. Consult https://hub.doc.eluv.io/content/rep/search_api/ for more information.
 
 Example:
 
