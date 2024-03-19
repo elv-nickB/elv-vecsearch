@@ -9,7 +9,6 @@ from collections import defaultdict
 from src.format import SearchOutput
 import src.loss as LossFunc
 
-
 def get_loss(res: SearchOutput, data: pd.DataFrame, query, k=20, reRank=False, useRank=True) -> float:
     _df = data.loc[data['query'] == query]
     iqShot2rating = {k: v for k, v in zip(_df['iqShot'], _df['avg_rating'])}
@@ -22,7 +21,7 @@ def get_loss(res: SearchOutput, data: pd.DataFrame, query, k=20, reRank=False, u
         if len(ranking) >= k:
             break
         try:
-            _iqShot = rs['hash'] + '|' + str(rs['fields']['f_start_time'][-1]) + '_' + str(
+            _iqShot = rs['id'] + '|' + str(rs['fields']['f_start_time'][-1]) + '_' + str(
                 rs['fields']['f_end_time'][-1])
             _rank = rs['rank']
             _score = rs['score']
@@ -32,7 +31,7 @@ def get_loss(res: SearchOutput, data: pd.DataFrame, query, k=20, reRank=False, u
             if _iqShot in iqShot2rating:
                 ranking.append(_rank)
                 simiScore.append(_score)
-                rating.append(iqShot2rating[_iqShot])
+                rating.append(iqShot2rating[_iqShot]/5.0)
             newTopM[_iqShot].append({
                 'query': query,
                 'rank': _rank,

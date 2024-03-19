@@ -117,8 +117,8 @@ def get_server():
 
     # register cleanup on exit
     atexit.register(index_builder.cleanup)
-    signal.signal(signal.SIGTERM, index_builder.cleanup)
-    signal.signal(signal.SIGINT, index_builder.cleanup)
+    signal.signal(signal.SIGTERM, lambda x, y: index_builder.cleanup())
+    signal.signal(signal.SIGINT, lambda x, y: index_builder.cleanup())
 
     CORS(server)
     return server

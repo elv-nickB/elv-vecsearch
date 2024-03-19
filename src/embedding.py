@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 import pickle as pkl
+import threading
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Abstrat class for encoder, has encode as abstract method
 class TextEncoder(ABC):
@@ -30,6 +32,7 @@ class VideoTagEncoder(TextEncoder):
         self.cache = {}
         self.K = K
         self.T = T
+        self.lock = threading.Lock()
 
     # Args:
     #   embeddings: Dict of embeddings with keys as the field names and list of text values as values
@@ -45,10 +48,11 @@ class VideoTagEncoder(TextEncoder):
                 text = [", ".join(text)]
             for t in text:
                 if t not in self.cache:
-                    self.cache[t] = self.model.encode(t, show_progress_bar=False).squeeze()
+                    with self.lock:
+                        self.cache[t] = self.model.encode(t, show_progress_bar=False).squeeze()
             e = np.array([self.cache[t] for t in text])
             if fname == "f_object":
-                e = _tag_clean(e, self.K, self.T)
+                e = self._tag_clean(e, self.K, self.T)
             res[fname] = e
         return res    
     
@@ -64,23 +68,24 @@ class VideoTagEncoder(TextEncoder):
         self.T = T
         self.K = K
 
-# Args:
-#   x: np.ndarray of shape (N, d) where N is the number of embeddings and d is the dimension of the embeddings
-#   K: number of clusters to reduce to
-#   T: threshold for removing similar embeddings
-# Returns:
-#   np.ndarray of shape (K, d) where K is the number of clusters
-def _tag_clean(x: np.ndarray, K: int, T: float) -> np.ndarray:
-    to_remove = []
-    if T:
-        for i in range(x.shape[0]):
-            for j in range(i+1, x.shape[0]):
-                if np.dot(x[i], x[j]) > T:
-                    to_remove.append(j)
-    x = np.delete(x, to_remove, axis=0)
-    if K:
-        if x.shape[0] > K:
-            kmeans = KMeans(n_clusters=K, n_init=10)
-            kmeans.fit(x)
-            x = kmeans.cluster_centers_
-    return x
+    # Args:
+    #   x: np.ndarray of shape (N, d) where N is the number of embeddings and d is the dimension of the embeddings
+    #   K: number of clusters to reduce to
+    #   T: threshold for removing similar embeddings
+    # Returns:
+    #   np.ndarray of shape (K, d) where K is the number of clusters
+    def _tag_clean(self, x: np.ndarray, K: int, T: float) -> np.ndarray:
+        if T:
+            similarities = cosine_similarity(x)
+            to_keep = np.full(x.shape[0], True, dtype=bool)
+            for i in range(x.shape[0]):
+                for j in range(i+1, x.shape[0]):
+                    if similarities[i, j] > T:
+                        to_keep[j] = False
+            x = x[to_keep]  
+        if K:
+            if x.shape[0] > K:
+                model = KMeans(n_clusters=self.K, n_init=2)
+                model.fit(x)
+                x = model.cluster_centers_
+        return x
