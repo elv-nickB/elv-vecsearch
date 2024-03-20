@@ -37,7 +37,7 @@ class SimpleSearcher(Searcher):
         else:
             # retrieve the uids from the index
             with timeit("Retrieving document uids from vector index"):
-                uids_per_field = [self.index.search(query["embedding"], field, k=args['max_total']) for field in args['search_fields']]
+                uids_per_field = [self.index.search(query["embedding"], field, k=250) for field in args['search_fields']]
                 # concatenate the results from different fields and deduplicate
                 uids = set(reduce(lambda x, y: x+y, uids_per_field))
         ranked_uids = self.ranker.rank(uids, args['max_total'], query)

@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Iterable, Callable
+from typing import List, Dict, Callable
 import numpy as np
 import os
 import dill
 import shutil
 import faiss
 import logging
+import h5py
 
 # field name -> list of embeddings
 VectorDocument = Dict[str, List[np.ndarray]]
@@ -76,7 +77,7 @@ class FaissIndex(Index):
         # maps field -> list of uids (allows us to retrieve uid from index after search)
         self.id_map = {}
         self.get_index = index_builder
-        os.makedirs(os.path.join(self.path, 'vector_data'), exist_ok=True)
+        self.vector_data = h5py.File(os.path.join(self.path, 'vector_data.h5'), 'a')
 
     @staticmethod
     def from_path(path: str) -> Index:
@@ -92,6 +93,7 @@ class FaissIndex(Index):
                 indices[field] = index
         if meta is None:
             raise ValueError("Index directory does not contain metadata file meta.pkl")
+        index.vector_data = h5py.File(os.path.join(path, 'vector_data.h5'), 'a')
         index = FaissIndex(meta.path, meta.index_builder)
         index.indices = indices
         index.id_map = meta.id_map
@@ -112,10 +114,7 @@ class FaissIndex(Index):
         self.indices[field].add(embeddings)
         for _ in embeddings:
             self.id_map[field].append(uid)
-        if not os.path.exists(os.path.join(self.path, 'vector_data', self.uid_to_path(uid))):
-            os.makedirs(os.path.join(self.path, 'vector_data', self.uid_to_path(uid)))
-        with open(os.path.join(self.path, 'vector_data', self.uid_to_path(uid), f'{field}.pkl'), 'wb') as f:
-            np.save(f, embeddings)
+        self.vector_data[f'{uid}/{field}'] = embeddings
 
     """
     Args:
@@ -138,16 +137,8 @@ class FaissIndex(Index):
         return list(self.indices.keys())
 
     # Retrieves all vector data from disk 
-    def get_embeddings(self, uid: str) -> Dict[str, List[np.ndarray]]:
-        path = os.path.join(self.path, 'vector_data', self.uid_to_path(uid))
-        if not os.path.exists(path):
-            raise ValueError(f"Vector data for {uid} does not exist")
-        data = {}
-        for field_data in os.listdir(path):
-            field = field_data[0:-4]
-            with open(os.path.join(path, field_data), 'rb') as f:
-                data[field] = np.load(f)
-        return data
+    def get_embeddings(self, uid: str) -> Dict[str, np.ndarray]:
+        return {field: np.array(self.vector_data[f'{uid}'][field]) for field in self.get_fields() if f'{uid}/{field}' in self.vector_data}
     
     # Backs up index to disk. 
     def commit(self) -> None:
@@ -165,6 +156,3 @@ class FaissIndex(Index):
         meta = FaissIndex.Meta(self.path, self.get_index, self.id_map)
         with open(os.path.join(self.path, 'meta.pkl'), 'wb') as f:
             dill.dump(meta, f)
-
-    def uid_to_path(self, uid: str) -> str:
-        return uid.replace('/', '_')
