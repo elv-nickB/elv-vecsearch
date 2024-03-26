@@ -8,11 +8,11 @@ from typing import Dict, Any, Callable
 
 from experiments.utils import get_score, convert
 from src.utils import timeit
-from src.index import Index
-from src.update import IndexBuilder
-from src.search import SimpleSearcher
-from src.rank import Ranker
-from src.query_understanding import QueryProcessor
+from src.index.faiss import Index
+from src.update.builder import IndexBuilder
+from src.search.simple import SimpleSearcher
+from src.ranking.rank import Ranker
+from src.query_processing.simple import QueryProcessor
 from src.format import SearchArgs
 from src import config
 

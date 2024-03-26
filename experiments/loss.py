@@ -1,7 +1,6 @@
 import numpy as np
 from sklearn.metrics import dcg_score as sk_dcg_score
 
-
 def dcg_at_k(true_rating, pred_rank, pred_score, topk=20, useRank=True):
     """_summary_
 

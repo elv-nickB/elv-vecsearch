@@ -1,24 +1,19 @@
 
-from abc import ABC, abstractmethod
 from typing import List, Dict
 from elv_client_py import ElvClient
 import logging
 from typing import List, Dict, Tuple
 from functools import reduce
 
-from src.index import Index
+from src.index.faiss import Index
 from src.utils import timeit
-from src.rank import SimpleRanker
-from src.query_understanding import SimpleQueryProcessor
-from src.index import Index
+from src.ranking.rank import SimpleRanker
+from src.query_processing.simple import SimpleQueryProcessor
+from src.index.faiss import Index
 from src.format import SearchArgs, SearchOutput
+from src.search.abstract import Searcher
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-class Searcher(ABC):
-    @abstractmethod
-    def search(self, args: SearchArgs) -> SearchOutput:
-        pass
 
 class SimpleSearcher(Searcher):
     def __init__(self, index_qid: str, client: ElvClient, processor: SimpleQueryProcessor, index: Index, ranker: SimpleRanker):
@@ -37,10 +32,11 @@ class SimpleSearcher(Searcher):
         else:
             # retrieve the uids from the index
             with timeit("Retrieving document uids from vector index"):
-                uids_per_field = [self.index.search(query["embedding"], field, k=250) for field in args['search_fields']]
+                uids_per_field = [self.index.search(query["embedding"], field, k=100) for field in args['search_fields']]
                 # concatenate the results from different fields and deduplicate
                 uids = set(reduce(lambda x, y: x+y, uids_per_field))
-        ranked_uids = self.ranker.rank(uids, args['max_total'], query)
+        with timeit("Ranking documents"):
+            ranked_uids = self.ranker.rank(uids, args['max_total'], query)
         # for retrieving the original order of the results after they are shuffled in the next step
         pos_map = self._get_pos_map(ranked_uids)
         # delegate search formatting and additional features to fabric search engine

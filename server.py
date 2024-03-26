@@ -4,21 +4,20 @@ import json
 import os
 import threading
 import atexit
-import signal
 import shutil
 from elv_client_py import ElvClient
 from flask_cors import CORS
 import tempfile
 import logging
 
-from src.search import SimpleSearcher 
-from src.rank import SimpleRanker
-from src.update import IndexBuilder, GlobalGitBuilder
+from src.search.simple import SimpleSearcher 
+from src.ranking.rank import SimpleRanker
+from src.update.builder import IndexBuilder
 from src.format import SearchArgs
-from src.embedding import VideoTagEncoder
+from src.embedding.object_clean import VideoTagEncoder
 from src import config
-from src.index import FaissIndex
-from src.query_understanding import SimpleQueryProcessor
+from src.index.faiss import FaissIndex
+from src.query_processing.simple import SimpleQueryProcessor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -33,10 +32,11 @@ def get_server():
         tmp_path = tempfile.mkdtemp(dir=config.TMP_PATH)
         index = FaissIndex(tmp_path, config.IndexConstructor)
         index_builder.build(qid, index, client)
-        if os.path.exists(os.path.join(config.INDEX_PATH, qid)):
-            logging.warning(f'Index already exists for qid={qid}, overwriting')
-            shutil.rmtree(os.path.join(config.INDEX_PATH, qid))
-        index.set_path(os.path.join(config.INDEX_PATH, qid))
+        if index_builder.get_status(qid).status == 'finished':
+            if os.path.exists(os.path.join(config.INDEX_PATH, qid)):
+                logging.warning(f'Index already exists for qid={qid}, overwriting')
+                shutil.rmtree(os.path.join(config.INDEX_PATH, qid))
+            index.set_path(os.path.join(config.INDEX_PATH, qid))
 
     def _is_indexed(qid: str) -> bool:
         return qid in os.listdir(config.INDEX_PATH)
@@ -117,8 +117,6 @@ def get_server():
 
     # register cleanup on exit
     atexit.register(index_builder.cleanup)
-    signal.signal(signal.SIGTERM, index_builder.cleanup)
-    signal.signal(signal.SIGINT, index_builder.cleanup)
 
     CORS(server)
     return server

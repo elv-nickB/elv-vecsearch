@@ -1,26 +1,11 @@
 from typing import List, Dict
 import numpy as np
-from abc import ABC, abstractmethod
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 import pickle as pkl
 
-# Abstrat class for encoder, has encode as abstract method
-class TextEncoder(ABC):
-    @abstractmethod
-    def encode(self, embeddings: Dict[str, List[str]]) -> Dict[str, np.ndarray]:
-        pass
+from src.embedding.abstract import TextEncoder
 
-class SimpleEncoder(TextEncoder):
-    def __init__(self, model_name: str):
-        self.model = SentenceTransformer(model_name)
-
-    def encode(self, embeddings: Dict[str, List[str]]) -> Dict[str, np.ndarray]:
-        res = {}
-        for fname, text in embeddings.items():
-            res[fname] = self.model.encode(text, show_progress_bar=False)
-        return res
-    
 # Encoder for video tags
 # Performs git cleanup and also merges categorical tracks into a single embedding
 class VideoTagEncoder(TextEncoder):
@@ -47,7 +32,7 @@ class VideoTagEncoder(TextEncoder):
                 if t not in self.cache:
                     self.cache[t] = self.model.encode(t, show_progress_bar=False).squeeze()
             e = np.array([self.cache[t] for t in text])
-            if fname == "f_object":
+            if fname == "f_object" or fname == "f_characters":
                 e = _tag_clean(e, self.K, self.T)
             res[fname] = e
         return res    
@@ -71,15 +56,17 @@ class VideoTagEncoder(TextEncoder):
 # Returns:
 #   np.ndarray of shape (K, d) where K is the number of clusters
 def _tag_clean(x: np.ndarray, K: int, T: float) -> np.ndarray:
-    to_remove = []
     if T:
+        to_remove = []
         for i in range(x.shape[0]):
             for j in range(i+1, x.shape[0]):
                 if np.dot(x[i], x[j]) > T:
                     to_remove.append(j)
-    x = np.delete(x, to_remove, axis=0)
+        x = np.delete(x, to_remove, axis=0)
     if K:
-        if x.shape[0] > K:
+        if K == 1:
+            x = np.mean(x, axis=0).reshape(1, -1)
+        elif x.shape[0] > K:
             kmeans = KMeans(n_clusters=K, n_init=10)
             kmeans.fit(x)
             x = kmeans.cluster_centers_

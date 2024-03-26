@@ -7,7 +7,7 @@ import logging
 from collections import defaultdict
 
 from src.format import SearchOutput
-import src.loss as LossFunc
+import experiments.loss as LossFunc
 
 
 def get_loss(res: SearchOutput, data: pd.DataFrame, query, k=20, reRank=False, useRank=True) -> float:
