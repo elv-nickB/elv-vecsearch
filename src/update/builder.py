@@ -8,7 +8,7 @@ import threading
 
 import src.config as config
 from src.index.faiss import Index
-from src.embedding.abstract import TextEncoder
+from src.embedding.abstract import DocEncoder
 from src.utils import timeit
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,7 +24,7 @@ class IndexBuilder():
     # Args:
     #   encoder: Used for embedding text fields
     #   preprocess: Function to preprocess documents before indexing
-    def __init__(self, encoder: TextEncoder):
+    def __init__(self, encoder: DocEncoder):
         self.encoder = encoder
         self.running_tasks = {}
         self.ended_tasks = {}

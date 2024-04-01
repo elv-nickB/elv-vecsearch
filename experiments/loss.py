@@ -39,7 +39,7 @@ By Tie-Yan Liu
     Returns:
         float: bounded regression loss
     """
-    sorted_ratings = sorted(true_rating, reverse=True)
+    sorted_ratings = np.array(sorted(true_rating, reverse=True))
     idcg = dcg_at_k(sorted_ratings, pred_rank,
                     pred_score, topk, useRank=useRank)
     z_m = 1/idcg

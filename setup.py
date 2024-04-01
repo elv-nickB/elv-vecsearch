@@ -21,5 +21,5 @@ setup(
         'loguru==0.7.2',
         'h5py==3.10.0',
         'elv-client-py @ git+https://github.com/eluv-io/elv-client-py.git@nick#egg=elv-client-py',
-        ]
+    ]
 )

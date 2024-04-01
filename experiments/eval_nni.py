@@ -9,7 +9,7 @@ import nni
 
 from src.index.faiss import FaissIndex
 from src.embedding import VideoTagEncoder
-from src.ranking.rank import SimpleRanker
+from src.ranking.simple import SimpleRanker
 from src.query_processing.simple import SimpleQueryProcessor
 from src.update import builder
 from src.utils import LRUSearchCache

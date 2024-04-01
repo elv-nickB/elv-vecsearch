@@ -1,21 +1,14 @@
 import torch
 import torch.nn as nn
 from collections import OrderedDict
-from typing import List, Optional, Dict, Tuple, Iterable
+from typing import List, Optional, Dict
 
-from src.query_processing.simple import SimpleQueryProcessor
-from src.ranking.rank import Ranker
-from src.index.faiss import Index
-
-class PairwiseRanker(Ranker):
-    """
-    A simple ranker that uses a scorer to rank documents based on their similarity to the query
+from src.query_processing.simple import SimpleProcessor
+from src.index.abstract import VectorDocument
+from src.ranking.abstract import Scorer
     
-    Use this class when scoring purely based off a query embedding and a vector document
-    """
-    def __init__(self, index: Index, model_path: str):
-        self.index = index
-        self.model = SimCLR_with_merge(768, 512, 256, [
+def get_pairwise_scorer(model_path: str) -> Scorer:
+    model = SimCLR_with_merge(768, 512, 256, [
                 "Object Detection",
                 "Celebrity Detection",
                 "Logo Detection",
@@ -26,27 +19,19 @@ class PairwiseRanker(Ranker):
                 "Speech to Text",
                 "Display Title",
             ], mode="stack")
-        self.model.load_state_dict(torch.load(model_path))
-        self.model.eval()
-
-    def rank(self, uids: Iterable[str], limit: int, query: SimpleQueryProcessor.ProcessedQuery) -> List[Tuple[str, float]]:
-        scores = []
-        for uid in uids:
-            _, _, q, d = self.model.forward(torch.from_numpy(query["embedding"]).unsqueeze(0), self._get_embeddings(uid))
-            score = torch.nn.functional.cosine_similarity(q, d).item()
-            scores.append((score, uid))
-        return [(uid, score) for score, uid in sorted(scores, reverse=True)][:limit]
-
-    def _get_embeddings(self, uid: str) -> torch.Tensor:
-        embeds = self.index.get_embeddings(uid)
-        tracks = ['f_object', 'f_celebrity', 'f_logo', 'f_landmark', 'f_characters', 'f_segment', 'f_action', 'f_speech_to_text', 'f_display_title']
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+    def scorer(query: SimpleProcessor.ProcessedQuery, doc: VectorDocument) -> float:  
         input = []
-        for track in tracks:
-            if track in embeds:
-                input.append(torch.sum(torch.from_numpy(embeds[track]), dim=0).squeeze(0))
+        for track in model.tracks:
+            if track in doc:
+                input.append(torch.sum(torch.from_numpy(doc[track]), dim=0).squeeze(0))
             else:
                 input.append(torch.zeros(768))
-        return torch.stack(input).unsqueeze(0)
+        embeds = torch.stack(input).unsqueeze(0)
+        _, _, q, d = model(torch.from_numpy(query["embedding"]).unsqueeze(0), embeds)
+        return torch.nn.functional.cosine_similarity(q, d).item()
+    return scorer
     
 def stack_feature(feature:Dict[str, torch.Tensor], keys: List[str]) -> torch.Tensor:
     # each feature is [D, ] shape
@@ -127,6 +112,8 @@ class SimCLR_with_merge(nn.Module):
             self.merge = Merge(keys)
         else:
             raise NotImplementedError("Please select the merge method from [flat, stack, None]")
+        
+        self.tracks = ['f_object', 'f_celebrity', 'f_logo', 'f_landmark', 'f_characters', 'f_segment', 'f_action', 'f_speech_to_text', 'f_display_title']
         
         # create the encoder
         self.encoder = Encoder(input_dim, hidden_dim)

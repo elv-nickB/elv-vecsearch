@@ -4,6 +4,8 @@ from typing import Any
 
 from src.format import SearchArgs
 
+Query = Any
+
 # Abstract class representing Query Understanding block
 class QueryProcessor(ABC):
     # Args:
@@ -12,5 +14,5 @@ class QueryProcessor(ABC):
     #  Returns:
     #   A processed query, the type of which is defined by the subclass. Will be passed to core search block.
     @abstractmethod
-    def process_query(self, content_id: str, query: SearchArgs) -> Any:
+    def process_query(self, content_id: str, query: SearchArgs) -> Query:
         pass

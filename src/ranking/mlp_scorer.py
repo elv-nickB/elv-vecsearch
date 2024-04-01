@@ -1,39 +1,25 @@
 import torch
 from torch import nn
-from typing import List, Tuple, Iterable
 
-from src.query_processing.simple import SimpleQueryProcessor
-from src.ranking.rank import Ranker
-from src.index.faiss import Index
+from src.query_processing.simple import SimpleProcessor
+from src.ranking.abstract import Scorer
+from src.index.abstract import VectorDocument        
 
-class MLPRanker(Ranker):
-    """
-    A simple ranker that uses a scorer to rank documents based on their similarity to the query
-    
-    Use this class when scoring purely based off a query embedding and a vector document
-    """
-    def __init__(self, index: Index, model_path: str):
-        self.index = index
-        self.model = MLP()
-        self.model.load_state_dict(torch.load(model_path))
-        self.model.eval()
-
-    def rank(self, uids: Iterable[str], limit: int, query: SimpleQueryProcessor.ProcessedQuery) -> List[Tuple[str, float]]:
-        scores = []
-        for uid in uids:
-            scores.append((self.model(torch.from_numpy(query["embedding"]).unsqueeze(0), self._get_embeddings(uid)).item(), uid))
-        return [(uid, score) for score, uid in sorted(scores, reverse=True)][:limit]
-
-    def _get_embeddings(self, uid: str) -> torch.Tensor:
-        embeds = self.index.get_embeddings(uid)
-        tracks = ['f_object', 'f_celebrity', 'f_logo', 'f_landmark', 'f_characters', 'f_segment', 'f_action', 'f_speech_to_text']
+def get_mlp_scorer(model_path: str) -> Scorer:
+    model = MLP()
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+    def scorer(query: SimpleProcessor.ProcessedQuery, doc: VectorDocument) -> float:  
         input = []
-        for track in tracks:
-            if track in embeds:
-                input.append(torch.sum(torch.from_numpy(embeds[track]), dim=0).squeeze(0))
+        for track in model.tracks:
+            if track in doc:
+                input.append(torch.sum(torch.from_numpy(doc[track]), dim=0).squeeze(0))
             else:
                 input.append(torch.zeros(768))
-        return torch.cat(input, dim=0).unsqueeze(0)
+        embeds = torch.cat(input, dim=0).unsqueeze(0)
+        return model(torch.from_numpy(query["embedding"]).unsqueeze(0), embeds).item()
+    
+    return scorer
 
 class MLP(torch.nn.Module):   # May be use Transformer Blocks!!
     """
@@ -50,7 +36,8 @@ class MLP(torch.nn.Module):   # May be use Transformer Blocks!!
         self.query_dim = query_dim
         self.num_output = num_output
         self.num_hidden_layers = num_hidden_layers
-    
+        # tracks embeddings are ordered like so 
+        self.tracks = ['f_object', 'f_celebrity', 'f_logo', 'f_landmark', 'f_characters', 'f_segment', 'f_action', 'f_speech_to_text']
 
         self.ip_layer = nn.Sequential(nn.Linear(self.input_dim, self.query_dim), nn.ReLU(True))
         

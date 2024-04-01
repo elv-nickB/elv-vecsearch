@@ -11,7 +11,7 @@ from src.utils import timeit
 from src.index.faiss import Index
 from src.update.builder import IndexBuilder
 from src.search.simple import SimpleSearcher
-from src.ranking.rank import Ranker
+from src.ranking.simple import Ranker
 from src.query_processing.simple import QueryProcessor
 from src.format import SearchArgs
 from src import config

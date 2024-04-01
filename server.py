@@ -11,19 +11,22 @@ import tempfile
 import logging
 
 from src.search.simple import SimpleSearcher 
-from src.ranking.rank import SimpleRanker
+from src.ranking.simple import SimpleRanker
+from src.ranking.scorers import get_semantic_scorer
+from src.query_processing.simple import SimpleProcessor
 from src.update.builder import IndexBuilder
 from src.format import SearchArgs
-from src.embedding.object_clean import VideoTagEncoder
-from src import config
+from src.embedding.chunk import ChunkEncoder
+from src.embedding.utils import load_encoder_with_cache
 from src.index.faiss import FaissIndex
-from src.query_processing.simple import SimpleQueryProcessor
+from src import config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def get_server():
     server = Flask(__name__)
-    encoder = VideoTagEncoder(config.SBERT_MODEL)
+    text_encoder = load_encoder_with_cache(config.SBERT_MODEL)
+    encoder = ChunkEncoder(text_encoder, 5, 2)
     index_builder = IndexBuilder(encoder)
     searchers = {}
 
@@ -69,8 +72,8 @@ def get_server():
         client = ElvClient.from_configuration_url(config.CONFIG_URL, args['auth'])
         if qid not in searchers:
             index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, qid))
-            processor = SimpleQueryProcessor(client, encoder)
-            ranker = SimpleRanker(index)
+            processor = SimpleProcessor(client, text_encoder)
+            ranker = SimpleRanker(index, get_semantic_scorer())
             searcher = SimpleSearcher(qid, client, processor, index, ranker)
             searchers[qid] = searcher
         searcher = searchers[qid]

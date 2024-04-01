@@ -1,16 +1,14 @@
-from elv_client_py import ElvClient
-from typing import Dict, Any
 
+from typing import Any
 from marshmallow import Schema, fields as field
-import logging
+from elv_client_py import ElvClient
 
 from src.embedding.abstract import TextEncoder
 from src.format import SearchArgs, Any
 from src.query_processing.abstract import QueryProcessor
 
-FieldWeights = Dict[str, float]
-
-class SimpleQueryProcessor(QueryProcessor):
+# This processor includes word weights in the processed query output.
+class SimpleProcessor(QueryProcessor):
 
     # Schema for the processed query:
     # NOTE: Query processors will return arbitrary dictionary-like output, so we can accomodate a variety of use cases.
@@ -19,7 +17,6 @@ class SimpleQueryProcessor(QueryProcessor):
         content_id = field.Str()
         args = field.Nested(SearchArgs)
         corrected_query = field.Str()
-        weights = field.Dict(field.Str(), field.Float())
         embedding = Any(allow_none=True)
 
     # Args:
@@ -32,39 +29,11 @@ class SimpleQueryProcessor(QueryProcessor):
 
     def process_query(self, content_id: str, query: SearchArgs) -> ProcessedQuery:
         corrected_query = self._correct_query(query["terms"])
-        weights = self._get_weights_from_query(content_id, corrected_query)
-        embedding = self.encoder.encode({"query": [corrected_query]})["query"][0]
-        res = {"content_id": content_id, "corrected_query": corrected_query, "weights": weights, "embedding": embedding}
+        embedding = self.encoder.encode(query["terms"])
+        res = {"content_id": content_id, "corrected_query": corrected_query, "embedding": embedding}
         res = self.ProcessedQuery().load(res)
         res["args"] = query
         return res
-    
-    # Args:
-    #   content_id: ID of index object to retrieve term weights from
-    #   query: text query
-    #
-    # Returns:
-    #   Dict[str, float] mapping from field to weight for the given query
-    def _get_weights_from_query(self, content_id: str, query: str) -> FieldWeights:
-        terms = query.split(' ')
-        term_weights = self.client.content_object_metadata(object_id=content_id, metadata_subtree='search/weights', select=terms)
-        # Hack if term_weights is None
-        if term_weights is None:
-            term_weights = self.client.content_object_metadata(object_id=content_id, metadata_subtree='search/weights', select=["a", "the"])
-            logging.error(f"Term weights were not found for the given query {query}. Using default weights.")
-            assert term_weights is not None
-        fields = list(next(iter(term_weights.values())).keys())
-        wt = {f: 0 for f in fields}
-        for term in term_weights:
-            if term not in term_weights:
-                continue
-            for field in wt:
-                wt[field] += term_weights[term][field]
-        # normalize weights by field
-        total = sum(wt.values())
-        for field in wt:
-            wt[field] /= total
-        return wt
 
     def _correct_query(self, query: str) -> str:
         return query.lower()

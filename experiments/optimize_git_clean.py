@@ -11,7 +11,7 @@ import logging
 from src.index.faiss import FaissIndex
 from src.embedding import VideoTagEncoder
 from src.search.simple import SimpleSearcher
-from src.ranking.rank import SimpleRanker
+from src.ranking.simple import SimpleRanker
 from src.query_processing.simple import SimpleQueryProcessor
 from src.format import SearchArgs
 from src.update import builder

@@ -7,8 +7,8 @@ from functools import reduce
 
 from src.index.faiss import Index
 from src.utils import timeit
-from src.ranking.rank import SimpleRanker
-from src.query_processing.simple import SimpleQueryProcessor
+from src.ranking.simple import SimpleRanker
+from src.query_processing.simple import SimpleProcessor
 from src.index.faiss import Index
 from src.format import SearchArgs, SearchOutput
 from src.search.abstract import Searcher
@@ -16,7 +16,7 @@ from src.search.abstract import Searcher
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class SimpleSearcher(Searcher):
-    def __init__(self, index_qid: str, client: ElvClient, processor: SimpleQueryProcessor, index: Index, ranker: SimpleRanker):
+    def __init__(self, index_qid: str, client: ElvClient, processor: SimpleProcessor, index: Index, ranker: SimpleRanker):
         self.client = client
         self.processor = processor
         self.index = index
@@ -35,6 +35,16 @@ class SimpleSearcher(Searcher):
                 uids_per_field = [self.index.search(query["embedding"], field, k=100) for field in args['search_fields']]
                 # concatenate the results from different fields and deduplicate
                 uids = set(reduce(lambda x, y: x+y, uids_per_field))
+                # Also search the top results from the fabric search and perform ranking on these. 
+                fs_args = {
+                    "terms": query["corrected_query"],
+                    "semantic": True,
+                    "max_total": 100,
+                    "limit": 100,
+                    "display_fields": ["uid"],
+                }
+                r = self.client.search(object_id=self.index_qid, query=fs_args)
+                uids.update(x["fields"]["uid"][0] for x in r["results"])
         with timeit("Ranking documents"):
             ranked_uids = self.ranker.rank(uids, args['max_total'], query)
         # for retrieving the original order of the results after they are shuffled in the next step
@@ -50,8 +60,10 @@ class SimpleSearcher(Searcher):
         # add the scores from the ranker to the results
         for rr, sr in zip(ranked_uids, res['results']):
             sr['score'] = rr[1]
-        if args["debug"]:
-            res['debug'] = {"query weights": query["weights"]}
+        if "debug" in args:
+            res['debug'] = {}
+            if "weights" in query:
+                res['debug'] = {"query weights": query["weights"]}
         return res
 
     # NOTE: if we want to build a new searcher we can move this method out of this class so others can call it. 
