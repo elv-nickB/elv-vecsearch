@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def get_server():
     server = Flask(__name__)
     text_encoder = load_encoder_with_cache(config.SBERT_MODEL)
-    encoder = ChunkEncoder(text_encoder, 5, 2)
+    encoder = ChunkEncoder(text_encoder, 12, 4)
     index_builder = IndexBuilder(encoder)
     searchers = {}
 
@@ -73,7 +73,7 @@ def get_server():
         if qid not in searchers:
             index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, qid))
             processor = SimpleProcessor(client, text_encoder)
-            ranker = SimpleRanker(index, get_semantic_scorer())
+            ranker = SimpleRanker(index, get_semantic_scorer(0.4, 0.2))
             searcher = SimpleSearcher(qid, client, processor, index, ranker)
             searchers[qid] = searcher
         searcher = searchers[qid]

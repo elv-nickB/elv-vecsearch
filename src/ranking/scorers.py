@@ -30,18 +30,21 @@ def get_word_weights_scorer() -> Scorer:
         return ww_scorer(query, doc)
     return scorer
 
-def get_semantic_scorer() -> Scorer:
-    cat_thres = 0.0
-    def scorer(query_embed: Query, doc: VectorDocument) -> float:
-        query_embed = query_embed["embedding"]
+def get_semantic_scorer(cat_thres: float, alpha: float) -> Scorer:
+    def scorer(query: Query, doc: VectorDocument) -> float:
+        query_embed = query["embedding"]
         if len(doc) == 0: 
             return 0
         score_semantic = 0
         score_cat = 0
         for f, embeds in doc.items():
+            f_sem_score = 0
             if f in SEM_TRACKS:
                 for e in embeds:
-                    score_semantic = max((1.+ut.dot_score(query_embed, e).item())/2., score_semantic)
+                    f_sem_score = max((1.+ut.dot_score(query_embed, e).item())/2., f_sem_score)
+                # add a fraction of the original tag embedding similarity to the semantic score (NOTE: relying on the fact that the original embedding is the last in the list)
+                f_sem_score = (1-alpha)*f_sem_score + alpha*(1.+ut.dot_score(query_embed, embeds[0]).item())/2.
+                score_semantic = max(f_sem_score, score_semantic)
             elif f in CAT_TRACKS:
                 for e in embeds:
                     score_cat = max((1.+ut.dot_score(query_embed, e).item())/2., score_cat)

@@ -15,6 +15,7 @@ class SearchArgs(Schema):
     display_fields = field.Method(deserialize='listify', missing=['all'])
     start = field.Int()
     limit = field.Int()
+    num_retrieve = field.Int()
     sort = field.Str()
     stats = field.Str()
     debug = field.Bool(default=False, missing=False)

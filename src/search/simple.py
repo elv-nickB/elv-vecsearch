@@ -24,6 +24,10 @@ class SimpleSearcher(Searcher):
         self.index_qid = index_qid
 
     def search(self, args: SearchArgs) -> SearchOutput:
+        if 'num_retrieve' in args:
+            num_retrieve = args['num_retrieve']
+        else:
+            num_retrieve = config.RETRIEVAL_NUM
         with timeit("Embedding query and processing it"):
             query = self.processor.process_query(self.index_qid, args)
         if args["uids"]:
@@ -32,15 +36,16 @@ class SimpleSearcher(Searcher):
         else:
             # retrieve the uids from the index
             with timeit("Retrieving document uids from vector index"):
-                uids_per_field = [self.index.search(query["embedding"], field, k=100) for field in args['search_fields']]
+                uids_per_field = [self.index.search(query["embedding"], field, k=num_retrieve) for field in args['search_fields']]
                 # concatenate the results from different fields and deduplicate
                 uids = set(reduce(lambda x, y: x+y, uids_per_field))
+            with timeit("Retrieving document uids from text-based index"):
                 # Also search the top results from the fabric search and perform ranking on these. 
                 fs_args = {
                     "terms": query["corrected_query"],
                     "semantic": True,
-                    "max_total": 100,
-                    "limit": 100,
+                    "max_total": num_retrieve,
+                    "limit": num_retrieve,
                     "display_fields": ["uid"],
                 }
                 r = self.client.search(object_id=self.index_qid, query=fs_args)
