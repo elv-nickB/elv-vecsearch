@@ -24,7 +24,7 @@ class ObjectCleanEncoder(DocEncoder):
         res = {}
         for fname, text in embeddings.items():    
             if fname in CAT_TRACKS:
-                text = [", ".join(text)]
+                text.append(", ".join(text))
             e = np.array([self.encoder.encode(t) for t in text])
             if fname == "f_object" or fname == "f_characters":
                 e = tag_clean(e, self.K, self.T)

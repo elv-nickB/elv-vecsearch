@@ -2,7 +2,7 @@
 from typing import List, Dict
 from elv_client_py import ElvClient
 import logging
-from typing import List, Dict, Tuple
+from typing import List, Dict, Any
 from functools import reduce
 
 from src.index.faiss import Index
@@ -10,7 +10,7 @@ from src.utils import timeit
 from src.ranking.simple import SimpleRanker
 from src.query_processing.simple import SimpleProcessor
 from src.index.faiss import Index
-from src.format import SearchArgs, SearchOutput
+from src.format import SearchArgs, SearchOutput, ClipSearchOutput
 from src.search.abstract import Searcher
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,7 +23,10 @@ class SimpleSearcher(Searcher):
         self.ranker = ranker
         self.index_qid = index_qid
 
-    def search(self, args: SearchArgs) -> SearchOutput:
+    def search(self, args: SearchArgs) -> SearchOutput | ClipSearchOutput:
+        if args["clips"]:
+            # we need to use post instead of get for clip search, requires some changes to the clip-search args. 
+            args = fix_clip_args(args)
         if 'num_retrieve' in args:
             num_retrieve = args['num_retrieve']
         else:
@@ -52,19 +55,16 @@ class SimpleSearcher(Searcher):
                 uids.update(x["fields"]["uid"][0] for x in r["results"])
         with timeit("Ranking documents"):
             ranked_uids = self.ranker.rank(uids, args['max_total'], query)
-        # for retrieving the original order of the results after they are shuffled in the next step
-        pos_map = self._get_pos_map(ranked_uids)
         # delegate search formatting and additional features to fabric search engine
         with timeit("Searching uids on fabric"):
             del args['terms']
-            res = self.fabric_search([x[0] for x in ranked_uids], args)
-        res = SearchOutput().load(res)
-        # fabric search won't preserve original order, so we will re-sort the results
-        with timeit("re-sorting the results"):
-            res['results'].sort(key=lambda x: pos_map[self._uid_from_result(x)])
-        # add the scores from the ranker to the results
-        for rr, sr in zip(ranked_uids, res['results']):
-            sr['score'] = rr[1]
+            res = self._search_uids([x[0] for x in ranked_uids], args)
+        if not args["clips"]:
+            res = SearchOutput().load(res)
+            for rr, sr in zip(ranked_uids, res['results']):
+                sr['score'] = rr[1]
+        else:
+            res = ClipSearchOutput().load(res)
         if "debug" in args:
             res['debug'] = {}
             if "weights" in query:
@@ -72,17 +72,23 @@ class SimpleSearcher(Searcher):
         return res
 
     # NOTE: if we want to build a new searcher we can move this method out of this class so others can call it. 
-    def fabric_search(self, uids: List[str], args: SearchArgs) -> SearchOutput:
-        # Select the documents from index based on uids
-        query = ' '.join(f'uid:\"{uid}\"' for uid in uids)
+    def _search_uids(self, uids: List[str], args: SearchArgs) -> Any:
+        # Select the documents from index based on uids, and rank them based on the provided order
+        query = ' '.join(f'uid:\"{uid}\"^{idx+1}' for idx, uid in enumerate(reversed(uids)))
         if "filters" in args and args["filters"] != "":
             query = f"({query}) AND ({args['filters']})"
         logging.info(f"Querying fabric with {query}")
         args["filters"] = query
         return self.client.search(object_id=self.index_qid, query=args)
 
-    def _get_pos_map(self, l: List[Tuple[str, float]]) -> Dict[str, int]:
-        return {l[i][0]: i for i in range(len(l))}
-
     def _uid_from_result(self, res: Dict[str, str]) -> str:
         return f"{res['hash']}{res['prefix']}"
+
+# We make search query using post instead of get which means we need to pass the clip options differently due to the way the clip search post handler is implemented in qfab
+def fix_clip_args(args: SearchArgs) -> SearchArgs:
+    args = args.copy()
+    clip_args = ["clips_include_source_tags", "clips_padding", "clips_max_duration", "clips_offering", "clips_coalescing_span"]
+    # copy values from args to clip_options and remove 'clips_' prefix
+    clip_options = {arg[6:]: args[arg] for arg in clip_args if arg in args}
+    args["clip_options"] = clip_options
+    return args
