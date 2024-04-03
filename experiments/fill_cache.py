@@ -1,11 +1,11 @@
 
-from src.update import IndexBuilder
+from src.update.builder import IndexBuilder
 from elv_client_py import ElvClient
 from src import config
 
 import argparse 
 import os
-from src.index import FaissIndex
+from src.index.faiss import FaissIndex
 import tempfile
 from src.embedding import VideoTagEncoder
 

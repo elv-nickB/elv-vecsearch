@@ -7,7 +7,6 @@ setup(
     install_requires=[
         'schema==0.7.5', 
         'faiss-gpu==1.7.2',
-        # 'faiss-cpu==1.7.2', # mac version
         'Flask==3.0.0',
         'flask_cors==4.0.0',
         'huggingface-hub==0.17.3',
@@ -20,6 +19,7 @@ setup(
         'hyperopt==0.2.7',
         'pandas==2.2.1',
         'loguru==0.7.2',
+        'h5py==3.10.0',
         'elv-client-py @ git+https://github.com/eluv-io/elv-client-py.git@nick#egg=elv-client-py',
-        ]
+    ]
 )

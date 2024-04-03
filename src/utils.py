@@ -21,6 +21,7 @@ class timeit:
         logging.info(f'Finished {self.message}...')
         logging.info(f"Elapsed time: {self.interval:.4f} seconds")
 
+# Wrapper for ElvClient that caches search results
 class LRUSearchCache:
     def __init__(self, client: ElvClient):
         self.client = client
@@ -35,3 +36,12 @@ class LRUSearchCache:
     @lru_cache(maxsize=None)
     def _cached_search(self, object_id: str, query: str) -> dict:
         return self.client.search(object_id=object_id, query=json.loads(query))
+
+# Search for a specific uid in an index object
+# Args:
+# client: ElvClient instance
+# object_id: str, index object id
+# uid: str, uid to search for
+def search_uid(client: ElvClient, object_id: str, uid: str) -> dict:
+    query = {"terms": f'uid:"{uid}"', "display_fields": ["all"]}
+    return client.search(object_id=object_id, query=query)

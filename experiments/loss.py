@@ -1,7 +1,6 @@
 import numpy as np
 from sklearn.metrics import dcg_score as sk_dcg_score
 
-
 def dcg_at_k(true_rating, pred_rank, pred_score, topk=20, useRank=True):
     """_summary_
 
@@ -40,7 +39,7 @@ By Tie-Yan Liu
     Returns:
         float: bounded regression loss
     """
-    sorted_ratings = sorted(true_rating, reverse=True)
+    sorted_ratings = np.array(sorted(true_rating, reverse=True))
     idcg = dcg_at_k(sorted_ratings, pred_rank,
                     pred_score, topk, useRank=useRank)
     z_m = 1/idcg

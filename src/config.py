@@ -16,3 +16,4 @@ if not os.path.exists(INDEX_PATH):
     os.makedirs(INDEX_PATH)
 
 IndexConstructor = lambda: faiss.IndexFlatL2(768)
+RETRIEVAL_NUM = 100

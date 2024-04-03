@@ -4,27 +4,29 @@ import json
 import os
 import threading
 import atexit
-import signal
 import shutil
 from elv_client_py import ElvClient
 from flask_cors import CORS
 import tempfile
 import logging
 
-from src.search import SimpleSearcher 
-from src.rank import SimpleRanker
-from src.update import IndexBuilder, GlobalGitBuilder
+from src.search.simple import SimpleSearcher 
+from src.ranking.simple import SimpleRanker
+from src.ranking.scorers import get_semantic_scorer
+from src.query_processing.simple import SimpleProcessor
+from src.update.builder import IndexBuilder
 from src.format import SearchArgs
-from src.embedding import VideoTagEncoder
+from src.embedding.object_clean import ObjectCleanEncoder
+from src.embedding.utils import load_encoder_with_cache
+from src.index.faiss import FaissIndex
 from src import config
-from src.index import FaissIndex
-from src.query_understanding import SimpleQueryProcessor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def get_server():
     server = Flask(__name__)
-    encoder = VideoTagEncoder(config.SBERT_MODEL)
+    text_encoder = load_encoder_with_cache(config.SBERT_MODEL)
+    encoder = ObjectCleanEncoder(text_encoder)
     index_builder = IndexBuilder(encoder)
     searchers = {}
 
@@ -33,10 +35,11 @@ def get_server():
         tmp_path = tempfile.mkdtemp(dir=config.TMP_PATH)
         index = FaissIndex(tmp_path, config.IndexConstructor)
         index_builder.build(qid, index, client)
-        if os.path.exists(os.path.join(config.INDEX_PATH, qid)):
-            logging.warning(f'Index already exists for qid={qid}, overwriting')
-            shutil.rmtree(os.path.join(config.INDEX_PATH, qid))
-        index.set_path(os.path.join(config.INDEX_PATH, qid))
+        if index_builder.get_status(qid).status == 'finished':
+            if os.path.exists(os.path.join(config.INDEX_PATH, qid)):
+                logging.warning(f'Index already exists for qid={qid}, overwriting')
+                shutil.rmtree(os.path.join(config.INDEX_PATH, qid))
+            index.set_path(os.path.join(config.INDEX_PATH, qid))
 
     def _is_indexed(qid: str) -> bool:
         return qid in os.listdir(config.INDEX_PATH)
@@ -51,7 +54,7 @@ def get_server():
 
     @server.route('/q/<qid>/search')
     def handle_search(qid: str) -> Response:
-        if not _check_access(qid, request.args.get('auth')):
+        if not _check_access(qid, request.args.get('authorization')):
             return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
 
         if not _is_indexed(qid):
@@ -66,11 +69,11 @@ def get_server():
         except ValueError as e:
             return Response(response=json.dumps({'error': str(e)}), status=400, mimetype='application/json')
         
-        client = ElvClient.from_configuration_url(config.CONFIG_URL, args['auth'])
+        client = ElvClient.from_configuration_url(config.CONFIG_URL, args['authorization'])
         if qid not in searchers:
             index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, qid))
-            processor = SimpleQueryProcessor(client, encoder)
-            ranker = SimpleRanker(index)
+            processor = SimpleProcessor(client, text_encoder)
+            ranker = SimpleRanker(index, get_semantic_scorer(0.0, 0.0))
             searcher = SimpleSearcher(qid, client, processor, index, ranker)
             searchers[qid] = searcher
         searcher = searchers[qid]
@@ -85,7 +88,7 @@ def get_server():
     @server.route('/q/<qid>/search_update')
     def handle_update(qid: str) -> Response:
         args = request.args
-        auth = args.get('auth')
+        auth = args.get('authorization')
         if not _check_access(qid, auth):
             return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
 
@@ -98,7 +101,7 @@ def get_server():
 
     @server.route('/q/<qid>/update_status')
     def handle_status(qid: str) -> Response:
-        if not _check_access(qid, request.args.get('auth')):
+        if not _check_access(qid, request.args.get('authorization')):
             return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
         status = index_builder.get_status(qid)
         if status:
@@ -108,7 +111,7 @@ def get_server():
     
     @server.route('/q/<qid>/stop_update')
     def handle_stop(qid: str) -> Response:
-        if not _check_access(qid, request.args.get('auth')):
+        if not _check_access(qid, request.args.get('authorization')):
             return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
         status = index_builder.stop(qid)
         if status is None:
@@ -117,8 +120,6 @@ def get_server():
 
     # register cleanup on exit
     atexit.register(index_builder.cleanup)
-    signal.signal(signal.SIGTERM, index_builder.cleanup)
-    signal.signal(signal.SIGINT, index_builder.cleanup)
 
     CORS(server)
     return server
