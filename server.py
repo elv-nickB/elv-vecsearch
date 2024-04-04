@@ -9,6 +9,7 @@ from elv_client_py import ElvClient
 from flask_cors import CORS
 import tempfile
 import logging
+from typing import Tuple
 
 from src.search.simple import SimpleSearcher 
 from src.ranking.simple import SimpleRanker
@@ -20,6 +21,7 @@ from src.embedding.object_clean import ObjectCleanEncoder
 from src.embedding.utils import load_encoder_with_cache
 from src.index.faiss import FaissIndex
 from src import config
+from src.utils import to_hash
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -30,38 +32,37 @@ def get_server():
     index_builder = IndexBuilder(encoder)
     searchers = {}
 
-    def _update(qid: str, auth: str) -> None:
-        client = ElvClient.from_configuration_url(config.CONFIG_URL, auth)
-        tmp_path = tempfile.mkdtemp(dir=config.TMP_PATH)
-        index = FaissIndex(tmp_path, config.IndexConstructor)
-        index_builder.build(qid, index, client)
-        if index_builder.get_status(qid).status == 'finished':
-            if os.path.exists(os.path.join(config.INDEX_PATH, qid)):
-                logging.warning(f'Index already exists for qid={qid}, overwriting')
-                shutil.rmtree(os.path.join(config.INDEX_PATH, qid))
-            index.set_path(os.path.join(config.INDEX_PATH, qid))
-
-    def _is_indexed(qid: str) -> bool:
-        return qid in os.listdir(config.INDEX_PATH)
+    def _is_indexed(hash: str) -> bool:
+        return hash in os.listdir(config.INDEX_PATH)
         
-    def _check_access(qid: str, auth: str) -> bool:
+    # Validates permission, converts qhot to hash, and creates an ElvClient instance based on auth token
+    def _get_client_and_hash(qhot: str, auth: str) -> Tuple[str, ElvClient]:
         client = ElvClient.from_configuration_url(config.CONFIG_URL, auth)
         try:
-            client.content_object(object_id=qid)
+            hash = to_hash(qhot, client)
         except:
-            return False
-        return True
+            return None, None
+        return hash, client
 
-    @server.route('/q/<qid>/search')
-    def handle_search(qid: str) -> Response:
-        if not _check_access(qid, request.args.get('authorization')):
-            return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
+    @server.route('/q/<qhot>/rep/search')
+    def handle_search(qhot: str) -> Response:
+        return _search(qhot)
+    
+    @server.route('/qlibs/<qlib>/q/<qhot>/rep/search')
+    def handle_search_with_qlib(qlib: str, qhot: str) -> Response:
+        # ignore qlib 
+        return _search(qhot)
 
-        if not _is_indexed(qid):
-            status = index_builder.get_status(qid)
+    def _search(qhot: str) -> Response:
+        hash, client = _get_client_and_hash(qhot, request.args.get('authorization'))
+        if hash is None:
+            return Response(response=json.dumps({'error': f'Unauthorized, qhot={qhot}'}), status=401, mimetype='application/json')
+
+        if not _is_indexed(hash):
+            status = index_builder.get_status(hash)
             if status is not None:
-                return Response(response=json.dumps({'error': f'Index update has not completed for qid={qid}, status={status.status}'}), status=400, mimetype='application/json')
-            return Response(response=json.dumps({'error': f'Index has not been built for qid={qid}'}), status=400, mimetype='application/json')
+                return Response(response=json.dumps({'error': f'Index update has not completed for hash={hash}, status={status.status}'}), status=400, mimetype='application/json')
+            return Response(response=json.dumps({'error': f'Index has not been built for hash={hash}'}), status=400, mimetype='application/json')
         
         args = request.args.to_dict()
         try:
@@ -69,14 +70,13 @@ def get_server():
         except ValueError as e:
             return Response(response=json.dumps({'error': str(e)}), status=400, mimetype='application/json')
         
-        client = ElvClient.from_configuration_url(config.CONFIG_URL, args['authorization'])
-        if qid not in searchers:
-            index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, qid))
+        if hash not in searchers:
+            index = FaissIndex.from_path(os.path.join(config.INDEX_PATH, hash))
             processor = SimpleProcessor(client, text_encoder)
             ranker = SimpleRanker(index, get_semantic_scorer(0.0, 0.0))
-            searcher = SimpleSearcher(qid, client, processor, index, ranker)
-            searchers[qid] = searcher
-        searcher = searchers[qid]
+            searcher = SimpleSearcher(hash, client, processor, index, ranker)
+            searchers[hash] = searcher
+        searcher = searchers[hash]
 
         if "search_fields" not in args:
             args["search_fields"] = searcher.index.get_fields()
@@ -85,37 +85,77 @@ def get_server():
        
         return Response(response=json.dumps(res), status=200, mimetype='application/json')
 
-    @server.route('/q/<qid>/search_update')
-    def handle_update(qid: str) -> Response:
+    @server.route('/q/<qhot>/search_update')
+    def handle_search_update(qhot: str) -> Response:
+        return _update(qhot)
+    
+    @server.route('/qlibs/<qlib>/q/<qhot>/rep/search')
+    def handle_update_with_qlib(qlib: str, qhot: str) -> Response:
+        # ignore qlib 
+        return _update(qhot)
+
+    def _update(qhot: str) -> Response:
+        hash, client = _get_client_and_hash(qhot, request.args.get('authorization'))
+        if hash is None:
+            return Response(response=json.dumps({'error': f'Unauthorized, qhot={qhot}'}), status=401, mimetype='application/json')
+        
         args = request.args
         auth = args.get('authorization')
-        if not _check_access(qid, auth):
-            return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
+        client = ElvClient.from_configuration_url(config.CONFIG_URL, auth)
+        hash = to_hash(qhot, client)
 
-        status = index_builder.get_status(qid)
+        status = index_builder.get_status(hash)
         if status and status.status == 'running':
-            return Response(response=json.dumps({'error': f'Indexing already in progress, qid={qid}, status={status.status}, progress={status.progress}'}), status=400, mimetype='application/json')
+            return Response(response=json.dumps({'error': f'Indexing already in progress, hash={hash}, status={status.status}, progress={status.progress}'}), status=400, mimetype='application/json')
         
-        threading.Thread(target=_update, args=(qid, auth)).start()
-        return Response(response=json.dumps({'lro_handle': qid}), status=200, mimetype='application/json')
+        threading.Thread(target=_update_job, args=(hash, client)).start()
+        return Response(response=json.dumps({'success': True}), status=200, mimetype='application/json')
+    
+    def _update_job(hash: str, client: ElvClient) -> None:
+        tmp_path = tempfile.mkdtemp(dir=config.TMP_PATH)
+        index = FaissIndex(tmp_path, config.IndexConstructor)
+        index_builder.build(hash, index, client)
+        if index_builder.get_status(hash).status == 'finished':
+            if os.path.exists(os.path.join(config.INDEX_PATH, hash)):
+                logging.warning(f'Index already exists for hash={hash}, overwriting')
+                shutil.rmtree(os.path.join(config.INDEX_PATH, hash))
+            index.set_path(os.path.join(config.INDEX_PATH, hash))
 
-    @server.route('/q/<qid>/update_status')
-    def handle_status(qid: str) -> Response:
-        if not _check_access(qid, request.args.get('authorization')):
-            return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
-        status = index_builder.get_status(qid)
+    @server.route('/q/<qhot>/update_status')
+    def handle_status(qhot: str) -> Response:
+        return _status(qhot)
+    
+    @server.route('/qlibs/<qlib>/q/<qhot>/rep/update_status')
+    def handle_status_with_qlib(qlib: str, qhot: str) -> Response:
+        return _status(qhot)
+
+    def _status(qhot: str) -> Response:
+        hash, client = _get_client_and_hash(qhot, request.args.get('authorization'))                               
+        if hash is None:
+            return Response(response=json.dumps({'error': f'Unauthorized, qhot={qhot}'}), status=401, mimetype='application/json')
+        
+        status = index_builder.get_status(hash)
         if status:
             return Response(response=json.dumps({'status': status.status, 'progress': status.progress, 'error': status.error}), status=200, mimetype='application/json')
         else:
-            return Response(response=json.dumps({'error': 'No index build has been initiated for qid={qid}'}), status=400, mimetype='application/json')
+            return Response(response=json.dumps({'error': f'No index build has been initiated for hash={hash}'}), status=400, mimetype='application/json')
     
-    @server.route('/q/<qid>/stop_update')
-    def handle_stop(qid: str) -> Response:
-        if not _check_access(qid, request.args.get('authorization')):
-            return Response(response=json.dumps({'error': f'Unauthorized, qid={qid}'}), status=401, mimetype='application/json')
-        status = index_builder.stop(qid)
+    @server.route('/q/<qhot>/stop_update')
+    def handle_stop(qhot: str) -> Response:
+        return _stop(qhot)
+    
+    @server.route('/qlibs/<qlib>/q/<qhot>/rep/stop_update')
+    def handle_stop_with_qlib(qlib: str, qhot: str) -> Response:
+        return _stop(qhot)
+
+    def _stop(qhot: str) -> Response:
+        hash, _ = _get_client_and_hash(qhot, request.args.get('authorization'))
+        if hash is None:
+            return Response(response=json.dumps({'error': f'Unauthorized, qhot={qhot}'}), status=401, mimetype='application/json')
+        
+        status = index_builder.stop(hash)
         if status is None:
-            return Response(response=json.dumps({'error': f'No index build has been initiated for qid={qid}'}), status=400, mimetype='application/json')
+            return Response(response=json.dumps({'error': f'No index build has been initiated for hash={hash}'}), status=400, mimetype='application/json')
         return Response(response=json.dumps({'status': status.status, 'progress': status.progress, 'error': status.error}), status=200, mimetype='application/json')
 
     # register cleanup on exit

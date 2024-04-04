@@ -45,3 +45,9 @@ class LRUSearchCache:
 def search_uid(client: ElvClient, object_id: str, uid: str) -> dict:
     query = {"terms": f'uid:"{uid}"', "display_fields": ["all"]}
     return client.search(object_id=object_id, query=query)
+
+def to_hash(qhot: str, client: ElvClient) -> str:
+    if qhot.startswith("iq__"):
+        return client.content_object(object_id=qhot)["hash"]
+    return qhot
+

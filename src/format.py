@@ -1,5 +1,5 @@
 from typing import List
-from marshmallow import Schema, fields as field
+from marshmallow import Schema, fields as field, EXCLUDE
 
 class Any(field.Field):
     def _deserialize(self, value, attr, data, **kwargs):
@@ -23,9 +23,13 @@ class SearchArgs(Schema):
     clips = field.Bool(default=False, missing=False)
     clips_include_source_tags = field.Bool(default=False, missing=False)
     clips_max_duration = field.Int()
+    select = field.Method(deserialize='listify', missing=[], default=[])
 
     def listify(self, item: str) -> List[str]:
         return item.split(',') 
+    
+    class Meta:
+        unknown = EXCLUDE
 
 class SearchOutput(Schema):
     class Pagination(Schema):
